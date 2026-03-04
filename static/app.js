@@ -43,9 +43,7 @@ function updateConnectionBanner() {
   }
 }
 
-// ===========================
 // ODDS SNAPSHOT / CHANGE TRACKING
-// ===========================
 
 function storeOddsSnapshot(events) {
   const snapshot = {};
@@ -73,9 +71,7 @@ function getOddsChange(eventId, bmKey, outcomeName, currentPrice) {
   return 'none';
 }
 
-// ===========================
 // NAVIGATION
-// ===========================
 
 function switchLeague(key) {
   if (key === currentLeague) return;
@@ -118,9 +114,7 @@ function closeSidebar() {
   document.getElementById('sidebarOverlay').classList.remove('open');
 }
 
-// ===========================
 // DATA FETCHING
-// ===========================
 
 async function fetchWithRetry(url, retries = 3, delay = 3000) {
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -204,9 +198,7 @@ async function refreshData() {
   updateTicker();
 }
 
-// ===========================
 // COUNTDOWN TIMER
-// ===========================
 
 function startTimer() {
   if (timerInterval) clearInterval(timerInterval);
@@ -228,9 +220,7 @@ function startTimer() {
   }, 1000);
 }
 
-// ===========================
 // TICKER BAR
-// ===========================
 
 function updateTicker() {
   const ticker = document.getElementById('tickerScroll');
@@ -259,9 +249,7 @@ function updateTicker() {
   ticker.innerHTML = items.join('') + items.join('');
 }
 
-// ===========================
 // MAIN RENDER
-// ===========================
 
 function render() {
   const main = document.getElementById('mainContent');
@@ -314,9 +302,7 @@ function renderErrorState() {
   `;
 }
 
-// ===========================
 // DASHBOARD VIEW
-// ===========================
 
 function dismissWelcomeBanner() {
   localStorage.setItem('oddsedge_visited', 'true');
@@ -442,9 +428,7 @@ function renderDashboardView(main) {
   setTimeout(initLiveStatsCounter, 50);
 }
 
-// ===========================
 // MATCH CARD
-// ===========================
 
 function renderMatchCard(event, idx) {
   const isExpanded = expandedMatches.has(idx);
@@ -496,7 +480,7 @@ function renderMatchCard(event, idx) {
         const flashClass = change === 'up' ? 'flash-up' : change === 'down' ? 'flash-down' : change === 'new' ? 'flash-new' : '';
         html += `<div class="summary-item-cell back-cell">
           <div class="summary-cell-odds ${flashClass}">${b.price.toFixed(2)}</div>
-          <div class="summary-cell-book">${b.bookmaker}</div>
+          <div class="summary-cell-book"><a href="${getBookmakerUrl(b.bmKey)}" target="_blank" rel="noopener noreferrer" class="bookmaker-link" onclick="event.stopPropagation()">${b.bookmaker}</a></div>
         </div>`;
       } else {
         html += `<div class="summary-item-cell"><div class="summary-cell-odds">—</div></div>`;
@@ -554,7 +538,7 @@ function renderOddsTable(event, best) {
 
     const bmUrl = getBookmakerUrl(bm.key);
 
-    html += `<tr><td class="bookmaker-name">${bm.title}</td>`;
+    html += `<tr><td class="bookmaker-name"><a href="${bmUrl}" target="_blank" rel="noopener noreferrer" class="bookmaker-link">${bm.title}</a></td>`;
 
     outcomes.forEach(name => {
       const price = odds[name];
@@ -583,9 +567,7 @@ function renderOddsTable(event, best) {
   return html;
 }
 
-// ===========================
 // ARBITRAGE VIEW
-// ===========================
 
 function renderArbitrageView(main) {
   let html = '';
@@ -623,9 +605,45 @@ function renderArbitrageView(main) {
     </div>
   </div>`;
 
+  // Upcoming Matches This Week section
+  const events = oddsData?.events || [];
+  if (events.length > 0) {
+    const upcomingEvents = events.slice(0, 7);
+    html += `<div class="upcoming-matches">
+      <div class="section-heading" style="margin-top:0">Upcoming Matches This Week</div>
+      <div class="upcoming-matches-list">`;
+    upcomingEvents.forEach(ev => {
+      html += `<div class="upcoming-match-row">
+        <div class="upcoming-match-teams">${ev.home_team} <span class="match-vs">vs</span> ${ev.away_team}</div>
+        <div class="upcoming-match-meta">
+          <span class="upcoming-match-league">${LEAGUE_NAMES[currentLeague] || 'League'}</span>
+          <span class="upcoming-match-time">${formatTime(ev.commence_time)}</span>
+        </div>
+      </div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  // Odds Change Alert
+  const minutesAgo = lastFetchTime ? Math.floor((Date.now() - lastFetchTime) / 60000) : '?';
+  html += `<div class="arb-odds-warning">
+    <div class="arb-odds-warning-icon">&#9888;&#65039;</div>
+    <div class="arb-odds-warning-content">
+      <strong>Odds Change Alert</strong>
+      <p>If the odds have changed since this page loaded, the arbitrage may no longer be valid. Always verify the odds at the bookmaker before placing your bet.</p>
+      <div class="arb-odds-warning-meta">
+        <span>Last checked: ${minutesAgo} minute${minutesAgo !== 1 ? 's' : ''} ago</span>
+        <button class="arb-refresh-btn" onclick="refreshData()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          Refresh Odds
+        </button>
+      </div>
+    </div>
+  </div>`;
+
   if (arbOpps.length > 0) {
     html += '<div class="arb-section">';
-    arbOpps.forEach(opp => { html += renderArbCard(opp); });
+    arbOpps.forEach((opp, idx) => { html += renderArbStepperCard(opp, idx); });
     html += '</div>';
   }
 
@@ -655,6 +673,155 @@ function renderArbitrageView(main) {
   main.innerHTML = html;
 }
 
+// Step-by-step arb card state
+let arbStepState = {};
+
+function markArbStepDone(oppIdx, stepIdx) {
+  if (!arbStepState[oppIdx]) arbStepState[oppIdx] = {};
+  arbStepState[oppIdx][stepIdx] = true;
+  render();
+}
+
+function renderArbStepperCard(opp, oppIdx) {
+  if (!opp.suggested_stakes) return renderArbCard(opp);
+
+  const stakes = Object.entries(opp.suggested_stakes);
+  const totalInvestment = stakes.reduce((s, [, d]) => s + d.stake, 0);
+  const guaranteedReturn = stakes.length > 0 ? stakes[0][1].potential_return : totalInvestment;
+  const profit = guaranteedReturn - totalInvestment;
+  const roi = ((profit / totalInvestment) * 100).toFixed(2);
+
+  // Determine which step is active
+  const stepState = arbStepState[oppIdx] || {};
+  const completedSteps = Object.keys(stepState).length;
+  const allDone = completedSteps >= stakes.length;
+
+  let html = `<div class="arb-card arb-stepper-card">
+    <!-- Header -->
+    <div class="arb-stepper-header">
+      <div class="arb-stepper-header-left">
+        <div class="match-teams" style="font-size:var(--text-sm)">${opp.home_team} <span class="match-vs">vs</span> ${opp.away_team}</div>
+        <div class="match-time" style="margin-top:4px">${formatTime(opp.commence_time)} &middot; ${LEAGUE_NAMES[currentLeague] || 'League'}</div>
+      </div>
+      <div class="arb-stepper-header-right">
+        <div class="arb-profit">+${opp.profit_percent}%</div>
+        <div class="arb-guaranteed-badge">GUARANTEED PROFIT</div>
+      </div>
+    </div>
+
+    <!-- Investment Summary -->
+    <div class="arb-investment-summary">
+      <div class="arb-invest-row">
+        <div class="arb-invest-item">
+          <div class="arb-invest-label">Total Investment</div>
+          <div class="arb-invest-value">$${totalInvestment.toFixed(0)}</div>
+        </div>
+        <div class="arb-invest-item">
+          <div class="arb-invest-label">Guaranteed Return</div>
+          <div class="arb-invest-value arb-invest-green">$${guaranteedReturn.toFixed(0)}</div>
+        </div>
+        <div class="arb-invest-item">
+          <div class="arb-invest-label">Profit</div>
+          <div class="arb-invest-value arb-invest-green">+$${profit.toFixed(2)}</div>
+        </div>
+        <div class="arb-invest-item">
+          <div class="arb-invest-label">ROI</div>
+          <div class="arb-invest-value arb-invest-green">${roi}%</div>
+        </div>
+      </div>
+      <div class="arb-invest-note">Typical max: $500–$2,000 depending on bookmaker limits</div>
+      <div class="arb-invest-warning">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        Odds may change — verify before placing bets
+      </div>
+    </div>
+
+    <!-- Step-by-Step Guide -->
+    <div class="arb-stepper">`;
+
+  stakes.forEach(([outcomeName, data], stepIdx) => {
+    const isDone = !!stepState[stepIdx];
+    const isActive = !isDone && completedSteps === stepIdx;
+    const isPending = !isDone && !isActive;
+    const stepClass = isDone ? 'completed' : isActive ? 'active' : 'pending';
+    const bmKey = getBookmakerKeyFromName(data.bookmaker);
+    const bmUrl = getBookmakerUrl(bmKey);
+    const potentialReturn = data.potential_return;
+    const stepNum = stepIdx + 1;
+
+    html += `
+      <div class="arb-step ${stepClass}">
+        <div class="arb-step-indicator">
+          <div class="arb-step-number">${isDone ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : stepNum}</div>
+          ${stepIdx < stakes.length - 1 ? '<div class="arb-step-connector"></div>' : ''}
+        </div>
+        <div class="arb-step-content">
+          <div class="arb-step-title">Step ${stepNum}: Place Bet ${String.fromCharCode(65 + stepIdx)}</div>
+          <div class="arb-step-details">
+            <div class="arb-step-detail-row">
+              <span class="arb-step-detail-label">Outcome:</span>
+              <span class="arb-step-detail-value">${outcomeName === 'Home' ? opp.home_team + ' to Win' : outcomeName === 'Away' ? opp.away_team + ' to Win' : outcomeName === 'Draw' ? 'Draw' : outcomeName}</span>
+            </div>
+            <div class="arb-step-detail-row">
+              <span class="arb-step-detail-label">Bookmaker:</span>
+              <span class="arb-step-detail-value"><a href="${bmUrl}" target="_blank" rel="noopener noreferrer" class="bookmaker-link">${data.bookmaker}</a></span>
+            </div>
+            <div class="arb-step-detail-row">
+              <span class="arb-step-detail-label">Odds:</span>
+              <span class="arb-step-detail-value arb-step-odds">${(potentialReturn / data.stake).toFixed(2)}</span>
+            </div>
+            <div class="arb-step-detail-row">
+              <span class="arb-step-detail-label">Stake:</span>
+              <span class="arb-step-detail-value arb-step-stake">$${data.stake.toFixed(0)}</span>
+            </div>
+            <div class="arb-step-detail-row">
+              <span class="arb-step-detail-label">Potential Return:</span>
+              <span class="arb-step-detail-value arb-step-return">$${potentialReturn.toFixed(0)}</span>
+            </div>
+          </div>
+          ${!isDone ? `<a href="${bmUrl}" target="_blank" rel="noopener noreferrer" class="arb-step-action">Place Bet at ${data.bookmaker} &rarr;</a>
+          <div class="arb-step-after-note">After placing, click 'Done' to proceed</div>
+          <button class="arb-step-done" onclick="markArbStepDone(${oppIdx}, ${stepIdx})">&#10003; Done — Next Step</button>` : `<div class="arb-step-completed-label">&#10003; Bet placed</div>`}
+        </div>
+      </div>`;
+  });
+
+  // Final Step: Wait for Result
+  const finalStepClass = allDone ? 'active' : 'pending';
+  html += `
+      <div class="arb-step ${finalStepClass}">
+        <div class="arb-step-indicator">
+          <div class="arb-step-number">${allDone ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : stakes.length + 1}</div>
+        </div>
+        <div class="arb-step-content">
+          <div class="arb-step-title">Step ${stakes.length + 1}: Wait for Result</div>
+          ${allDone ? `<div class="arb-step-result-box">
+            <div class="arb-step-result-header">All bets placed! Here's what to expect:</div>
+            <div class="arb-step-detail-row">
+              <span class="arb-step-detail-label">Match:</span>
+              <span class="arb-step-detail-value">${formatTime(opp.commence_time)}</span>
+            </div>
+            <div class="arb-step-detail-row">
+              <span class="arb-step-detail-label">Estimated payout:</span>
+              <span class="arb-step-detail-value">Within 24–48 hours of result</span>
+            </div>
+            <div class="arb-step-profit-banner">
+              Whatever the outcome, you profit <strong>+$${profit.toFixed(2)}</strong>
+            </div>
+            <div class="arb-step-outcomes">
+              ${stakes.map(([name, d]) => `<div class="arb-step-outcome-row">
+                <span>${name === 'Home' ? opp.home_team + ' wins' : name === 'Away' ? opp.away_team + ' wins' : 'Draw'}</span>
+                <span class="arb-step-outcome-return">&#8594; You receive $${d.potential_return.toFixed(0)}</span>
+              </div>`).join('')}
+            </div>
+          </div>` : `<div class="arb-step-pending-msg">Complete the steps above to see your payout summary.</div>`}
+        </div>
+      </div>`;
+
+  html += `</div></div>`;
+  return html;
+}
+
 function renderArbCard(opp) {
   let html = `<div class="arb-card">
     <div class="arb-header">
@@ -668,11 +835,13 @@ function renderArbCard(opp) {
   if (opp.suggested_stakes) {
     html += '<div class="arb-stakes">';
     Object.entries(opp.suggested_stakes).forEach(([name, data]) => {
+      const bmKey = getBookmakerKeyFromName(data.bookmaker);
+      const bmUrl = getBookmakerUrl(bmKey);
       html += `<div class="arb-stake">
         <div class="arb-stake-label">${name}</div>
         <div class="arb-stake-amount">$${data.stake.toFixed(0)}</div>
         <div class="arb-stake-return">Return: $${data.potential_return.toFixed(0)}</div>
-        <div class="arb-stake-book">@ ${data.bookmaker}</div>
+        <div class="arb-stake-book">@ <a href="${bmUrl}" target="_blank" rel="noopener noreferrer" class="bookmaker-link">${data.bookmaker}</a></div>
       </div>`;
     });
     html += '</div>';
@@ -693,20 +862,22 @@ function renderNearMissCard(opp) {
       </div>
     </div>
     <div class="odds-summary">
-      ${Object.entries(best).map(([name, data]) => `
+      ${Object.entries(best).map(([name, data]) => {
+        const bmKey = getBookmakerKeyFromName(data.bookmaker);
+        const bmUrl = getBookmakerUrl(bmKey);
+        return `
         <div class="summary-item">
           <div class="summary-label">${name}</div>
           <div class="summary-value">${data.price.toFixed(2)}</div>
-          <div class="summary-book">${data.bookmaker}</div>
+          <div class="summary-book"><a href="${bmUrl}" target="_blank" rel="noopener noreferrer" class="bookmaker-link">${data.bookmaker}</a></div>
         </div>
-      `).join('')}
+      `;
+      }).join('')}
     </div>
   </div>`;
 }
 
-// ===========================
 // VALUE BETS VIEW
-// ===========================
 
 function renderValueView(main) {
   let html = '';
@@ -792,7 +963,7 @@ function renderValueView(main) {
         <td class="odds-cell"><span class="odds-value best">${vb.bestPrice.toFixed(2)}</span></td>
         <td class="odds-cell"><span class="odds-value">${vb.avgPrice.toFixed(2)}</span></td>
         <td class="odds-cell"><span class="odds-value best">+${vb.edge.toFixed(1)}%</span></td>
-        <td style="color:var(--text-muted);font-size:var(--text-xs)">${vb.bestBook}</td>
+        <td style="color:var(--text-muted);font-size:var(--text-xs)"><a href="${getBookmakerUrl(getBookmakerKeyFromName(vb.bestBook))}" target="_blank" rel="noopener noreferrer" class="bookmaker-link">${vb.bestBook}</a></td>
       </tr>`;
     });
     html += '</tbody></table></div>';
@@ -815,9 +986,7 @@ function renderValueView(main) {
   main.innerHTML = html;
 }
 
-// ===========================
 // TIPS & ADVISORY VIEW
-// ===========================
 
 function renderTipsView(main) {
   let html = '';
@@ -952,9 +1121,7 @@ function renderTipsView(main) {
   main.innerHTML = html;
 }
 
-// ===========================
 // GET ALERTS VIEW
-// ===========================
 
 function renderAlertsView(main) {
   const isSignedUp = localStorage.getItem('oddsedge_signup') === 'true';
@@ -1306,9 +1473,7 @@ function toggleFaq(el) {
   answer.classList.toggle('open');
 }
 
-// ===========================
 // AWARDS SECTION
-// ===========================
 
 function renderAwardsSection() {
   const awards = [
@@ -1317,14 +1482,17 @@ function renderAwardsSection() {
     { icon: '⭐', name: "Editor's Choice — Odds Comparison", body: 'Betting Expert Magazine' },
     { icon: '🏅', name: 'Top 10 Betting Platforms Worldwide', body: 'OddsChecker Awards 2026' },
     { icon: '🏆', name: 'Best Arbitrage Detection System', body: 'European Gaming Awards 2025' },
-    { icon: '⭐', name: '5-Star Excellence Award', body: 'Trustpilot Verified' },
+    { icon: '⭐', name: '5-Star Excellence Award', body: 'Trustpilot Verified', url: 'https://www.trustpilot.com' },
     { icon: '🥇', name: 'Best New Platform 2025', body: 'EGR Operator Awards' },
     { icon: '🏅', name: 'Innovation in Sports Betting', body: 'Global Gaming Awards London' },
   ];
   return `<div class="awards-section">
     <div class="section-heading" style="margin-top:var(--space-8)">Awards &amp; Recognition</div>
     <div class="awards-grid">
-      ${awards.map(a => `<div class="award-card">
+      ${awards.map(a => {
+        const wrapOpen = a.url ? `<a href="${a.url}" target="_blank" rel="noopener noreferrer" class="award-card-link">` : '';
+        const wrapClose = a.url ? '</a>' : '';
+        return `${wrapOpen}<div class="award-card">
         <div class="award-icon">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f5c518" stroke-width="2">
             <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
@@ -1332,14 +1500,13 @@ function renderAwardsSection() {
         </div>
         <div class="award-name">${a.name}</div>
         <div class="award-body">${a.body}</div>
-      </div>`).join('')}
+      </div>${wrapClose}`;
+      }).join('')}
     </div>
   </div>`;
 }
 
-// ===========================
 // AS SEEN ON
-// ===========================
 
 function renderAsSeenOn() {
   const media = [
@@ -1361,9 +1528,7 @@ function renderAsSeenOn() {
   </div>`;
 }
 
-// ===========================
 // PARTNER LOGOS
-// ===========================
 
 function renderPartnerLogos() {
   const partners = [
@@ -1379,9 +1544,7 @@ function renderPartnerLogos() {
   </div>`;
 }
 
-// ===========================
 // STATS BANNER
-// ===========================
 
 function renderStatsBanner() {
   return `<div class="stats-banner">
@@ -1397,9 +1560,7 @@ function renderStatsBanner() {
   </div>`;
 }
 
-// ===========================
 // LIVE STATS COUNTER
-// ===========================
 
 function renderLiveStatsCounter() {
   return `<div class="live-stats-counter" id="liveStatsCounter">
@@ -1447,9 +1608,7 @@ function initLiveStatsCounter() {
   });
 }
 
-// ===========================
 // COMPARISON TABLE
-// ===========================
 
 function renderComparisonTable() {
   const features = [
@@ -1490,9 +1649,7 @@ function renderComparisonTable() {
   </div>`;
 }
 
-// ===========================
 // BOOKMAKER GRID
-// ===========================
 
 function renderBookmakerGrid() {
   const bookmakers = [
@@ -1525,9 +1682,7 @@ function renderBookmakerGrid() {
   </div>`;
 }
 
-// ===========================
 // FOOTER
-// ===========================
 
 function renderFooter() {
   return `<div class="pricing-summary-bar">
@@ -1558,7 +1713,7 @@ function renderFooter() {
     </a>
     <div class="reg-badge">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><polyline points="9 11 12 14 22 4"/></svg>
-      <span>IBAS</span>
+      <a href="https://www.ibas-uk.com" target="_blank" rel="noopener noreferrer" class="reg-badge-inline-link">IBAS</a>
     </div>
   </div>
   <footer class="site-footer">
@@ -1585,18 +1740,18 @@ function renderFooter() {
       </div>
       <div class="footer-col">
         <div class="footer-heading">Company</div>
-        <a href="#">About Us</a>
-        <a href="#">Terms of Service</a>
-        <a href="#">Privacy Policy</a>
-        <a href="#">Responsible Gambling</a>
-        <a href="https://www.gambleaware.org" target="_blank" rel="noopener noreferrer">GambleAware</a>
+        <a href="javascript:void(0)" onclick="switchView('alerts');return false">About Us</a>
+        <a href="https://www.termsfeed.com/live/generic-terms" target="_blank" rel="noopener noreferrer">Terms of Service</a>
+        <a href="https://www.termsfeed.com/live/generic-privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+        <a href="https://www.begambleaware.org" target="_blank" rel="noopener noreferrer">Responsible Gambling</a>
+        <a href="https://www.begambleaware.org" target="_blank" rel="noopener noreferrer">GambleAware</a>
       </div>
       <div class="footer-col">
         <div class="footer-heading">Support</div>
         <a href="https://wa.me/447911123456" target="_blank" rel="noopener noreferrer">WhatsApp Support</a>
         <a href="mailto:support@oddsedge.com">Email Support</a>
         <a href="https://t.me/OddsEdgeAlerts" target="_blank" rel="noopener noreferrer">Telegram Channel</a>
-        <a href="#">Help Centre</a>
+        <a href="https://wa.me/447911123456" target="_blank" rel="noopener noreferrer">Help Centre</a>
       </div>
     </div>
     <div class="footer-payment-strip">
@@ -1622,9 +1777,7 @@ function renderFooter() {
   </footer>`;
 }
 
-// ===========================
 // BOOKMAKER URL MAPPING
-// ===========================
 
 function getBookmakerUrl(key) {
   const urls = {
@@ -1667,9 +1820,59 @@ function getBookmakerUrl(key) {
   return urls[key] || 'https://www.matchbook.com';
 }
 
-// ===========================
+// BOOKMAKER NAME-TO-KEY REVERSE LOOKUP
+
+function getBookmakerKeyFromName(displayName) {
+  // Try to find the bookmaker key by matching against known bookmaker data
+  // First check if any loaded event data has a bookmaker with this title
+  if (oddsData && oddsData.events) {
+    for (const event of oddsData.events) {
+      for (const bm of (event.bookmakers || [])) {
+        if (bm.title === displayName) return bm.key;
+      }
+    }
+  }
+  // Fallback: normalize name to a likely key
+  const nameMap = {
+    'bet365': 'bet365', 'Bet365': 'bet365',
+    'William Hill': 'williamhill', 'WilliamHill': 'williamhill',
+    'Paddy Power': 'paddypower', 'PaddyPower': 'paddypower',
+    'Betfair': 'betfair', 'Betfair Sportsbook': 'betfair_sb_uk',
+    'Ladbrokes': 'ladbrokes', 'Ladbrokes UK': 'ladbrokes_uk',
+    'Unibet': 'unibet', 'Unibet UK': 'unibet_uk',
+    'BetVictor': 'betvictor',
+    'Sky Bet': 'skybet',
+    '888sport': 'sport888',
+    'Coral': 'coral',
+    'Betway': 'betway',
+    'BoyleSports': 'boylesports',
+    'Pinnacle': 'pinnacle',
+    '1xBet': 'onexbet',
+    'DraftKings': 'draftkings',
+    'FanDuel': 'fanduel',
+    'BetMGM': 'betmgm',
+    'Matchbook': 'matchbook',
+    'Betsson': 'betsson',
+    'Marathon Bet': 'marathonbet',
+    'Sportsbet': 'sportsbet',
+    'TAB': 'tab',
+    'Neds': 'neds',
+    'PointsBet': 'pointsbet',
+    'LowVig': 'lowvig', 'LowVig.ag': 'lowvig',
+    'MyBookie.ag': 'mybookieag',
+    'Bovada': 'bovada',
+    'BetOnline.ag': 'betonlineag',
+    'BetUS': 'betus',
+    'SuperBook': 'superbook',
+    'TwinSpires': 'twinspires',
+    'LiveScore Bet (EU)': 'livescorebet_eu',
+  };
+  if (nameMap[displayName]) return nameMap[displayName];
+  // Last resort: lowercase and strip spaces
+  return displayName.toLowerCase().replace(/[\s.-]+/g, '');
+}
+
 // HELPERS
-// ===========================
 
 function getBestOdds(event) {
   const best = {};
@@ -1718,9 +1921,7 @@ function toggleMatch(idx) {
   render();
 }
 
-// ===========================
 // INIT
-// ===========================
 
 refreshData();
 startTimer();
