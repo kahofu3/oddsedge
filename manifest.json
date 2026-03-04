@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "drive_id": "527edf37-9764-4f16-9811-ba2911df8069",
+  "name": "oddsedge-deploy",
+  "description": "OddsEdge v2.2 - Multi-league betting intelligence website",
+  "tags": [
+    "oddsedge",
+    "betting",
+    "fastapi",
+    "dashboard"
+  ],
+  "created_at": "2026-03-04T11:10:30.506677+00:00",
+  "updated_at": "2026-03-04T11:10:30.506677+00:00",
+  "parent_project": null,
+  "sessions": [
+    {
+      "session_id": "0d6238c0-93d9-4019-835e-75ccd5d0f693/subagents/oddsedge_v2_2_improvements_20260304_110622",
+      "timestamp": "2026-03-04T11:10:30.506677+00:00",
+      "summary": "Applied 8 improvements: fixed Go Pro PayPal buttons to WhatsApp flow, added cold-start UX with spinner and retry logic, multi-league backend support (7 leagues), league selector dropdown in topbar, mobile status bar and team name truncation, Open Graph/Twitter/JSON-LD SEO meta tags, error state with retry button and offline banner, plus KPI shimmer hover and background texture polish."
+    }
+  ]
+}
