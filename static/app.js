@@ -1,193 +1,58 @@
 // === OddsEdge v2 — Premier League Betting Intelligence ===
-// Full SPA: Dashboard, Arbitrage Scanner, Value Bets, Tips & Advisory, Alerts
+// Full-featured dashboard with live odds, arbitrage, value bets, tips & alerts
+const API = "";  // same origin on Render
 
-'use strict';
+let currentView = "dashboard";
+let oddsData = null;
+let arbData = null;
+let previousOdds = {};
+let isLoading = false;
+let expandedMatches = new Set();
+let lastFetchTime = null;
+let refreshInterval = null;
+let timerInterval = null;
 
-// ============================================================
-// CONSTANTS & STATE
-// ============================================================
-
-const API_BASE = '';
-const REFRESH_INTERVAL = 1800; // 30 min
-
-let state = {
-  oddsData: null,
-  arbData: null,
-  currentView: 'dashboard',
-  lastUpdated: null,
-  isLoading: false,
-  countdown: REFRESH_INTERVAL,
-  prevOdds: {},
-};
-
-// ============================================================
-// UTILITIES
-// ============================================================
-
-function fmt(n) {
-  return Number(n).toFixed(2);
+function storeOddsSnapshot(events) {
+  const snapshot = {};
+  (events || []).forEach(event => {
+    const key = event.id;
+    snapshot[key] = {};
+    (event.bookmakers || []).forEach(bm => {
+      (bm.markets || []).forEach(m => {
+        if (m.key !== 'h2h') return;
+        (m.outcomes || []).forEach(o => {
+          snapshot[key][`${bm.key}:${o.name}`] = o.price;
+        });
+      });
+    });
+  });
+  return snapshot;
 }
 
-function fmtTime(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-GB', { weekday: 'short', month: 'short', day: 'numeric' })
-    + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+function getOddsChange(eventId, bmKey, outcomeName, currentPrice) {
+  if (!previousOdds[eventId]) return 'none';
+  const prev = previousOdds[eventId][`${bmKey}:${outcomeName}`];
+  if (prev === undefined) return 'new';
+  if (currentPrice > prev) return 'up';
+  if (currentPrice < prev) return 'down';
+  return 'none';
 }
-
-function fmtCountdown(s) {
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-}
-
-function getMarginClass(m) {
-  if (m < 4) return 'low';
-  if (m < 8) return 'medium';
-  return 'high';
-}
-
-// ============================================================
-// API CALLS
-// ============================================================
-
-async function fetchOdds() {
-  const r = await fetch(`${API_BASE}/api/odds`);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
-}
-
-async function fetchArbitrage() {
-  const r = await fetch(`${API_BASE}/api/arbitrage`);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
-}
-
-// ============================================================
-// DATA LOADING
-// ============================================================
-
-async function loadData() {
-  if (state.isLoading) return;
-  state.isLoading = true;
-
-  const btn = document.getElementById('refreshBtn');
-  if (btn) btn.disabled = true;
-
-  try {
-    const [odds, arb] = await Promise.all([fetchOdds(), fetchArbitrage()]);
-    state.oddsData = odds;
-    state.arbData = arb;
-    state.lastUpdated = new Date();
-    state.countdown = REFRESH_INTERVAL;
-
-    updateStatus(odds.demo ? 'Demo Mode' : 'Live Data', true);
-    updateCreditsBadge(odds.remaining_credits);
-    updateTicker(odds.events || []);
-    renderCurrentView();
-  } catch (err) {
-    console.error('Load error:', err);
-    updateStatus('Error — Retrying', false);
-  } finally {
-    state.isLoading = false;
-    if (btn) btn.disabled = false;
-  }
-}
-
-function refreshData() {
-  loadData();
-}
-
-// ============================================================
-// UI UPDATES
-// ============================================================
-
-function updateStatus(text, ok) {
-  const el = document.getElementById('statusText');
-  if (el) el.textContent = text;
-  const dot = document.querySelector('.sidebar-footer .live-dot');
-  if (dot) dot.style.background = ok ? 'var(--green)' : 'var(--pink)';
-}
-
-function updateCreditsBadge(credits) {
-  const el = document.getElementById('creditsBadge');
-  if (el) el.textContent = credits === 'N/A (demo)' ? 'DEMO' : `${credits} cr`;
-}
-
-function updateTicker(events) {
-  const el = document.getElementById('tickerScroll');
-  if (!el || !events.length) return;
-
-  const items = [];
-  for (const ev of events.slice(0, 8)) {
-    const bms = ev.bookmakers || [];
-    if (!bms.length) continue;
-
-    const best = getBestOdds(ev);
-    if (!best) continue;
-
-    const sep = '<span class="ticker-sep">|</span>';
-    items.push(`
-      <span class="ticker-item">
-        <span class="teams">${ev.home_team} vs ${ev.away_team}</span>
-        ${sep}
-        <span class="odds">H: ${fmt(best.home)} · D: ${fmt(best.draw)} · A: ${fmt(best.away)}</span>
-      </span>`);
-  }
-
-  // Duplicate for seamless scroll
-  const html = [...items, ...items].join('');
-  el.innerHTML = html;
-}
-
-// ============================================================
-// NAVIGATION
-// ============================================================
 
 function switchView(view) {
-  state.currentView = view;
-
-  // Update nav active states
-  document.querySelectorAll('.nav-item').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === view);
+  currentView = view;
+  document.querySelectorAll('.nav-item[data-view]').forEach(el => {
+    el.classList.toggle('active', el.dataset.view === view);
   });
-
-  // Update header title
-  const titles = {
-    dashboard: 'Dashboard',
-    arbitrage: 'Arbitrage Scanner',
-    value: 'Value Bets',
-    tips: 'Tips & Advisory',
-    alerts: 'Get Alerts',
-  };
-  const titleEl = document.getElementById('headerTitle');
-  if (titleEl) titleEl.textContent = titles[view] || 'OddsEdge';
-
-  renderCurrentView();
+  const titles = { dashboard: "Dashboard", arbitrage: "Arbitrage Scanner", value: "Value Bets", tips: "Tips & Advisory", alerts: "Get Alerts" };
+  document.getElementById('headerTitle').textContent = titles[view] || "Dashboard";
+  render();
   closeSidebar();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
-
-function renderCurrentView() {
-  const views = {
-    dashboard: renderDashboard,
-    arbitrage: renderArbitrage,
-    value: renderValue,
-    tips: renderTips,
-    alerts: renderAlerts,
-  };
-  const fn = views[state.currentView];
-  if (fn) fn();
-}
-
-// ============================================================
-// SIDEBAR (MOBILE)
-// ============================================================
 
 function toggleSidebar() {
-  const sidebar = document.getElementById('sidebar');
-  const overlay = document.getElementById('sidebarOverlay');
-  sidebar.classList.toggle('open');
-  overlay.classList.toggle('open');
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('open');
 }
 
 function closeSidebar() {
@@ -195,604 +60,377 @@ function closeSidebar() {
   document.getElementById('sidebarOverlay').classList.remove('open');
 }
 
-// ============================================================
-// ODDS HELPERS
-// ============================================================
-
-function getBestOdds(event) {
-  const best = {};
-  for (const bm of (event.bookmakers || [])) {
-    for (const mkt of (bm.markets || [])) {
-      if (mkt.key !== 'h2h') continue;
-      for (const out of (mkt.outcomes || [])) {
-        const name = out.name;
-        if (!best[name] || out.price > best[name].price) {
-          best[name] = { price: out.price, bm: bm.title };
-        }
-      }
-    }
-  }
-  if (Object.keys(best).length < 3) return null;
-  const keys = Object.keys(best);
-  const home = best[event.home_team]?.price;
-  const away = best[event.away_team]?.price;
-  const draw = best['Draw']?.price;
-  if (!home || !away || !draw) return null;
-  return { home, away, draw, homeBm: best[event.home_team]?.bm, awayBm: best[event.away_team]?.bm, drawBm: best['Draw']?.bm };
+async function fetchOdds() {
+  try {
+    const resp = await fetch(`${API}/api/odds`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return await resp.json();
+  } catch (e) { console.error("Failed to fetch odds:", e); return null; }
 }
 
-function calcMargin(event) {
-  const best = getBestOdds(event);
-  if (!best) return 100;
-  return ((1/best.home + 1/best.draw + 1/best.away) - 1) * 100;
+async function fetchArbitrage() {
+  try {
+    const resp = await fetch(`${API}/api/arbitrage`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return await resp.json();
+  } catch (e) { console.error("Failed to fetch arbitrage:", e); return null; }
 }
 
-// ============================================================
-// RENDER: DASHBOARD
-// ============================================================
-
-function renderDashboard() {
-  const container = document.getElementById('mainContent');
-  if (!container) return;
-
-  if (!state.oddsData) {
-    container.innerHTML = loadingHTML();
-    return;
-  }
-
-  const events = state.oddsData.events || [];
-  const arbData = state.arbData || {};
-  const arbCount = arbData.arbitrage_count || 0;
-  const totalBooks = events.length ? Math.max(...events.map(e => (e.bookmakers||[]).length)) : 0;
-  const avgMargin = events.length ? (events.reduce((s, e) => s + calcMargin(e), 0) / events.length).toFixed(1) : '—';
-  const bestValue = findBestValue(events);
-
-  container.innerHTML = `
-    ${state.oddsData.demo ? demoBannerHTML() : ''}
-    <div class="stats-grid">
-      <div class="stat-card" style="--card-accent: var(--grad-green-blue)">
-        <div class="stat-icon" style="--icon-bg: var(--green-dim); --icon-color: var(--green)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-        </div>
-        <div class="stat-value">${events.length}</div>
-        <div class="stat-label">Live Matches</div>
-        <div class="stat-delta up">EPL</div>
-      </div>
-      <div class="stat-card" style="--card-accent: var(--grad-gold-orange)">
-        <div class="stat-icon" style="--icon-bg: var(--gold-dim); --icon-color: var(--gold)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-        </div>
-        <div class="stat-value" style="color: var(--gold)">${arbCount}</div>
-        <div class="stat-label">Arbitrage Ops</div>
-        ${arbCount > 0 ? '<div class="stat-delta up">LIVE</div>' : '<div class="stat-delta">—</div>'}
-      </div>
-      <div class="stat-card" style="--card-accent: var(--grad-blue-purple)">
-        <div class="stat-icon" style="--icon-bg: var(--blue-dim); --icon-color: var(--blue)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-        </div>
-        <div class="stat-value" style="color: var(--blue)">${totalBooks}</div>
-        <div class="stat-label">Max Bookmakers</div>
-      </div>
-      <div class="stat-card" style="--card-accent: var(--grad-pink-purple)">
-        <div class="stat-icon" style="--icon-bg: var(--pink-dim); --icon-color: var(--pink)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-        </div>
-        <div class="stat-value" style="color: var(--pink)">${avgMargin}%</div>
-        <div class="stat-label">Avg Margin</div>
-      </div>
-    </div>
-
-    <div class="section-header">
-      <div class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-        Upcoming Matches
-      </div>
-      <span class="section-badge">${events.length} matches</span>
-    </div>
-    <div class="matches-grid">
-      ${events.map(ev => matchCardHTML(ev)).join('')}
-    </div>
-  `;
+async function refreshData() {
+  if (isLoading) return;
+  isLoading = true;
+  const btn = document.getElementById('refreshBtn');
+  if (btn) btn.disabled = true;
+  if (oddsData && oddsData.events) previousOdds = storeOddsSnapshot(oddsData.events);
+  if (!oddsData) renderLoading();
+  const [odds, arb] = await Promise.all([fetchOdds(), fetchArbitrage()]);
+  oddsData = odds; arbData = arb; isLoading = false; lastFetchTime = Date.now();
+  if (btn) btn.disabled = false;
+  const status = document.getElementById('statusText');
+  const credits = document.getElementById('creditsBadge');
+  if (oddsData) {
+    if (oddsData.demo) { status.textContent = "Demo Mode"; credits.textContent = "Demo"; }
+    else { status.textContent = "Live"; credits.textContent = `${oddsData.remaining_credits} credits`; }
+  } else { status.textContent = "Error"; }
+  render(); updateTicker();
 }
 
-function matchCardHTML(ev) {
-  const best = getBestOdds(ev);
-  if (!best) return '';
-  const margin = calcMargin(ev);
-  const mClass = getMarginClass(margin);
-  const books = (ev.bookmakers || []).length;
-
-  return `
-    <div class="match-card">
-      <div class="match-header">
-        <div class="match-teams">${ev.home_team} <span style="color:var(--text-muted);font-weight:400">vs</span> ${ev.away_team}</div>
-        <div class="match-meta">
-          <span class="match-time">${fmtTime(ev.commence_time)}</span>
-          <span class="match-books-count">${books} books</span>
-        </div>
-      </div>
-      <div class="odds-row">
-        <div class="odds-group">
-          <div class="odds-label">HOME</div>
-          <div class="odds-best">${fmt(best.home)}</div>
-          <div class="odds-bookmaker">${best.homeBm}</div>
-        </div>
-        <div class="odds-group">
-          <div class="odds-label">DRAW</div>
-          <div class="odds-best">${fmt(best.draw)}</div>
-          <div class="odds-bookmaker">${best.drawBm}</div>
-        </div>
-        <div class="odds-group">
-          <div class="odds-label">AWAY</div>
-          <div class="odds-best">${fmt(best.away)}</div>
-          <div class="odds-bookmaker">${best.awayBm}</div>
-        </div>
-        <div class="margin-badge ${mClass}">${margin.toFixed(1)}%</div>
-      </div>
-    </div>`;
-}
-
-// ============================================================
-// RENDER: ARBITRAGE
-// ============================================================
-
-function renderArbitrage() {
-  const container = document.getElementById('mainContent');
-  if (!container) return;
-
-  if (!state.arbData) {
-    container.innerHTML = loadingHTML();
-    return;
-  }
-
-  const opps = state.arbData.opportunities || [];
-  const arbOpps = opps.filter(o => o.is_arbitrage);
-  const nonArb = opps.filter(o => !o.is_arbitrage);
-
-  container.innerHTML = `
-    ${state.oddsData?.demo ? demoBannerHTML() : ''}
-    <div class="arb-header-alert">
-      <div class="arb-alert-icon">⚡</div>
-      <div class="arb-alert-text">
-        <strong>${arbOpps.length} Arbitrage ${arbOpps.length === 1 ? 'Opportunity' : 'Opportunities'} Found</strong>
-        <span>Scanning ${state.arbData.total_events || 0} matches across all bookmakers</span>
-      </div>
-    </div>
-
-    ${arbOpps.length ? `
-      <div class="section-header">
-        <div class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/></svg>
-          Arbitrage Opportunities
-        </div>
-        <span class="section-badge">${arbOpps.length} found</span>
-      </div>
-      ${arbOpps.map(o => arbCardHTML(o)).join('')}
-    ` : ''}
-
-    <div class="section-header" style="margin-top: var(--space-6)">
-      <div class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-        All Markets (by Margin)
-      </div>
-      <span class="section-badge blue">${nonArb.length} markets</span>
-    </div>
-    ${nonArb.slice(0, 15).map(o => arbCardHTML(o)).join('')}
-  `;
-}
-
-function arbCardHTML(opp) {
-  const isArb = opp.is_arbitrage;
-  const outcomes = Object.entries(opp.best_odds || {});
-
-  return `
-    <div class="arb-card ${isArb ? 'is-arb' : ''}">
-      <div class="arb-teams">${opp.home_team} vs ${opp.away_team}</div>
-      <div class="arb-odds-grid">
-        ${outcomes.map(([name, data]) => `
-          <div class="arb-outcome">
-            <div class="arb-outcome-name">${name}</div>
-            <div class="arb-outcome-price">${fmt(data.price)}</div>
-            <div class="arb-outcome-book">${data.bookmaker}</div>
-          </div>
-        `).join('')}
-      </div>
-      <div class="arb-footer">
-        <div class="arb-margin">
-          <span class="label">Margin: </span>
-          <span class="value ${isArb ? 'profit' : 'loss'}">${isArb ? '-' : '+'}${Math.abs(opp.margin_percent).toFixed(2)}%</span>
-          ${isArb ? `&nbsp;&nbsp;<span class="label">Profit: </span><span class="value profit">+${opp.profit_percent}%</span>` : ''}
-        </div>
-        ${isArb && opp.suggested_stakes ? `
-          <div class="arb-stakes">
-            Suggested on £1,000: ${Object.entries(opp.suggested_stakes).map(([k,v]) => `${k}: £${v.stake}`).join(' | ')}
-          </div>` : ''}
-      </div>
-    </div>`;
-}
-
-// ============================================================
-// RENDER: VALUE BETS
-// ============================================================
-
-function renderValue() {
-  const container = document.getElementById('mainContent');
-  if (!container) return;
-
-  if (!state.oddsData) {
-    container.innerHTML = loadingHTML();
-    return;
-  }
-
-  const events = state.oddsData.events || [];
-  const valueItems = computeValueBets(events);
-
-  container.innerHTML = `
-    ${state.oddsData.demo ? demoBannerHTML() : ''}
-    <div class="section-header">
-      <div class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-        Value Bet Scanner
-      </div>
-      <span class="section-badge pink">${valueItems.length} value picks</span>
-    </div>
-    <div style="margin-bottom: var(--space-4); font-size: var(--text-sm); color: var(--text-muted); line-height: 1.6;">
-      Value bets are identified where the best available odds imply a lower probability than our model estimates.
-      Higher edge % = better value. Always bet responsibly.
-    </div>
-    ${valueItems.map((item, i) => valueCardHTML(item, i)).join('')}
-  `;
-}
-
-function computeValueBets(events) {
-  const items = [];
-  for (const ev of events) {
-    const best = getBestOdds(ev);
-    if (!best) continue;
-
-    const margin = (1/best.home + 1/best.draw + 1/best.away);
-    const trueHome = (1/best.home) / margin;
-    const trueDraw = (1/best.draw) / margin;
-    const trueAway = (1/best.away) / margin;
-
-    const fairHome = 1 / trueHome;
-    const fairDraw = 1 / trueDraw;
-    const fairAway = 1 / trueAway;
-
-    const outcomes = [
-      { name: ev.home_team, price: best.home, fair: fairHome, bm: best.homeBm },
-      { name: 'Draw', price: best.draw, fair: fairDraw, bm: best.drawBm },
-      { name: ev.away_team, price: best.away, fair: fairAway, bm: best.awayBm },
-    ];
-
-    for (const out of outcomes) {
-      const edge = ((out.price / out.fair) - 1) * 100;
-      if (edge > 1.5) {
-        items.push({
-          match: `${ev.home_team} vs ${ev.away_team}`,
-          time: ev.commence_time,
-          pick: out.name,
-          price: out.price,
-          fair: out.fair,
-          edge,
-          bm: out.bm,
-        });
-      }
-    }
-  }
-  items.sort((a, b) => b.edge - a.edge);
-  return items.slice(0, 20);
-}
-
-function valueCardHTML(item, i) {
-  const isTop = i < 3;
-  return `
-    <div class="value-card">
-      <div class="value-rank ${isTop ? 'top' : ''}">${i + 1}</div>
-      <div class="value-info">
-        <div class="value-match">${item.match}</div>
-        <div class="value-detail">
-          Pick: <strong>${item.pick}</strong> &nbsp;·&nbsp;
-          Best odds: <strong style="color:var(--green)">${fmt(item.price)}</strong> @ ${item.bm} &nbsp;·&nbsp;
-          Fair value: ${fmt(item.fair)}
-        </div>
-      </div>
-      <div class="value-edge">
-        <div class="value-pct">+${item.edge.toFixed(1)}%</div>
-        <div class="value-pct-label">EDGE</div>
-      </div>
-    </div>`;
-}
-
-function findBestValue(events) {
-  const items = computeValueBets(events);
-  return items.length ? items[0] : null;
-}
-
-// ============================================================
-// RENDER: TIPS & ADVISORY
-// ============================================================
-
-function renderTips() {
-  const container = document.getElementById('mainContent');
-  if (!container) return;
-
-  const events = state.oddsData?.events || [];
-  const tips = generateTips(events);
-
-  container.innerHTML = `
-    <div class="tips-intro">
-      <div class="tips-intro-icon">📊</div>
-      <h2>Expert Betting Advisory</h2>
-      <p>Data-driven tips generated from live odds, market movements, and statistical models. Updated every 30 minutes.</p>
-    </div>
-
-    <div class="section-header">
-      <div class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-        Today's Tips
-      </div>
-      <span class="section-badge gold">${tips.length} tips</span>
-    </div>
-
-    <div class="tips-grid">
-      ${tips.map(tip => tipCardHTML(tip)).join('')}
-    </div>
-
-    <div class="disclaimer">
-      ⚠️ These tips are generated algorithmically from market data and are for informational purposes only.
-      Gambling involves risk. Please bet responsibly and within your means. 18+ only.
-    </div>
-  `;
-}
-
-function generateTips(events) {
-  if (!events.length) return getDemoTips();
-
-  const tips = [];
-  const sorted = [...events].sort((a, b) => calcMargin(a) - calcMargin(b));
-
-  for (const ev of sorted.slice(0, 6)) {
-    const best = getBestOdds(ev);
-    if (!best) continue;
-
-    const margin = calcMargin(ev);
-    const implied_home = 1 / best.home;
-    const implied_draw = 1 / best.draw;
-    const implied_away = 1 / best.away;
-
-    let pick, pickOdds, pickBm, reasoning, confidence;
-
-    if (best.home < 2.2 && best.home <= best.away && margin < 6) {
-      pick = ev.home_team;
-      pickOdds = best.home;
-      pickBm = best.homeBm;
-      confidence = best.home < 1.7 ? 5 : best.home < 2.0 ? 4 : 3;
-      reasoning = `Strong home favourite with tight market (${margin.toFixed(1)}% margin). Best price available at ${pickBm}.`;
-    } else if (best.away < best.home && best.away < 2.5) {
-      pick = ev.away_team;
-      pickOdds = best.away;
-      pickBm = best.awayBm;
-      confidence = best.away < 2.0 ? 4 : 3;
-      reasoning = `Away side showing strong value. Market backing away win with tight spread.`;
-    } else {
-      pick = 'Draw';
-      pickOdds = best.draw;
-      pickBm = best.drawBm;
-      confidence = 2;
-      reasoning = `Evenly matched contest. Draw represents value with implied probability of ${(implied_draw * 100).toFixed(0)}%.`;
-    }
-
-    tips.push({
-      match: `${ev.home_team} vs ${ev.away_team}`,
-      time: ev.commence_time,
-      pick,
-      pickOdds,
-      pickBm,
-      confidence,
-      reasoning,
-      type: confidence >= 4 ? 'STRONG TIP' : confidence >= 3 ? 'VALUE TIP' : 'SPECULATIVE',
-    });
-  }
-
-  return tips.length ? tips : getDemoTips();
-}
-
-function getDemoTips() {
-  return [
-    { match: 'Arsenal vs Chelsea', time: null, pick: 'Arsenal', pickOdds: 1.72, pickBm: 'Bet365', confidence: 4, type: 'STRONG TIP', reasoning: 'Arsenal\'s home record this season is exceptional. Market price reflects true probability.' },
-    { match: 'Manchester City vs Liverpool', time: null, pick: 'Manchester City', pickOdds: 1.85, pickBm: 'Betfair', confidence: 4, type: 'STRONG TIP', reasoning: 'City\'s home dominance continues. Liverpool missing key midfielders.' },
-    { match: 'Newcastle vs Aston Villa', time: null, pick: 'Draw', pickOdds: 3.20, pickBm: 'William Hill', confidence: 3, type: 'VALUE TIP', reasoning: 'Both sides evenly matched. Draw implied at 28.5% but model suggests 33%.' },
-    { match: 'Brighton vs West Ham', time: null, pick: 'Brighton', pickOdds: 2.10, pickBm: 'Paddy Power', confidence: 3, type: 'VALUE TIP', reasoning: 'Brighton\'s xG model shows significant edge. West Ham struggling on the road.' },
-    { match: 'Everton vs Wolves', time: null, pick: 'Under 2.5', pickOdds: 1.95, pickBm: 'Sky Bet', confidence: 2, type: 'SPECULATIVE', reasoning: 'Both teams averaging under 1.2 goals per game at home/away respectively.' },
-    { match: 'Crystal Palace vs Fulham', time: null, pick: 'Fulham +1', pickOdds: 2.40, pickBm: 'Unibet', confidence: 2, type: 'SPECULATIVE', reasoning: 'Fulham\'s away form has been solid. Asian handicap offers value at current price.' },
-  ];
-}
-
-function tipCardHTML(tip) {
-  const confDots = Array.from({length: 5}, (_, i) =>
-    `<span class="conf-dot ${i < tip.confidence ? 'filled' : ''}"></span>`
-  ).join('');
-
-  const typeColors = {
-    'STRONG TIP': 'var(--grad-gold-orange)',
-    'VALUE TIP': 'var(--grad-green-blue)',
-    'SPECULATIVE': 'var(--grad-pink-purple)',
-  };
-
-  return `
-    <div class="tip-card" style="--tip-color: ${typeColors[tip.type] || 'var(--grad-gold-orange)'}">
-      <div class="tip-header">
-        <div class="tip-confidence">${confDots}</div>
-        <span class="tip-type-badge">${tip.type}</span>
-      </div>
-      <div class="tip-match">${tip.match}</div>
-      <div class="tip-pick">Pick: <strong>${tip.pick}</strong></div>
-      <div class="tip-odds-row">
-        <div class="tip-odds-value">${fmt(tip.pickOdds)}</div>
-        <div class="tip-odds-book">${tip.pickBm}</div>
-      </div>
-      <div class="tip-reasoning">${tip.reasoning}</div>
-    </div>`;
-}
-
-// ============================================================
-// RENDER: ALERTS / LEAD CAPTURE
-// ============================================================
-
-function renderAlerts() {
-  const container = document.getElementById('mainContent');
-  if (!container) return;
-
-  container.innerHTML = `
-    <div class="alerts-hero">
-      <div class="alerts-hero-icon">🔔</div>
-      <h2>Never Miss an Edge</h2>
-      <p>Get instant alerts when arbitrage opportunities appear, odds shift significantly, or value bets emerge — delivered straight to your inbox or phone.</p>
-
-      <div class="alerts-features">
-        <div class="alert-feature-pill">⚡ Instant Arbitrage Alerts</div>
-        <div class="alert-feature-pill">📈 Odds Movement Alerts</div>
-        <div class="alert-feature-pill">💎 Value Bet Notifications</div>
-        <div class="alert-feature-pill">📧 Email & SMS Delivery</div>
-        <div class="alert-feature-pill">🆓 Free to Join</div>
-      </div>
-    </div>
-
-    <div class="alert-form" id="alertFormWrapper">
-      <h3>Get Free Alerts</h3>
-      <div id="alertFormContent">
-        <div class="form-group">
-          <label class="form-label" for="alertName">Your Name</label>
-          <input class="form-input" type="text" id="alertName" placeholder="Enter your name">
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="alertEmail">Email Address</label>
-          <input class="form-input" type="email" id="alertEmail" placeholder="you@example.com">
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="alertPhone">Phone (optional, for SMS)</label>
-          <input class="form-input" type="tel" id="alertPhone" placeholder="+44 7700 900000">
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="alertFreq">Alert Frequency</label>
-          <select class="form-select" id="alertFreq">
-            <option value="instant">Instant (real-time)</option>
-            <option value="hourly">Hourly digest</option>
-            <option value="daily">Daily summary</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Alert Types</label>
-          <div class="form-checkbox-group">
-            <label class="form-checkbox">
-              <input type="checkbox" checked> <span>⚡ Arbitrage opportunities</span>
-            </label>
-            <label class="form-checkbox">
-              <input type="checkbox" checked> <span>💎 High-value bets (edge > 5%)</span>
-            </label>
-            <label class="form-checkbox">
-              <input type="checkbox"> <span>📈 Major odds movements (>10%)</span>
-            </label>
-            <label class="form-checkbox">
-              <input type="checkbox"> <span>📊 Daily tips & advisory</span>
-            </label>
-          </div>
-        </div>
-        <button class="submit-btn" onclick="submitAlertForm()">🔔 Activate Free Alerts</button>
-      </div>
-      <div class="form-success" id="alertSuccess">
-        <div class="form-success-icon">🎉</div>
-        <h4>You're In!</h4>
-        <p>We'll send your first alert within the next 30 minutes. Check your email to confirm your subscription.</p>
-      </div>
-    </div>
-
-    <div class="alert-benefits">
-      <div class="benefit-card">
-        <div class="benefit-icon">⚡</div>
-        <div class="benefit-title">Real-Time Alerts</div>
-        <div class="benefit-desc">Arbitrage opportunities disappear within minutes. Our system monitors continuously and alerts you first.</div>
-      </div>
-      <div class="benefit-card">
-        <div class="benefit-icon">🔒</div>
-        <div class="benefit-title">No Spam, Ever</div>
-        <div class="benefit-desc">We only send alerts when there's genuine value. Unsubscribe instantly at any time.</div>
-      </div>
-      <div class="benefit-card">
-        <div class="benefit-icon">📱</div>
-        <div class="benefit-title">Multi-Channel</div>
-        <div class="benefit-desc">Receive alerts via email, SMS, or both. Customise frequency to match your betting schedule.</div>
-      </div>
-      <div class="benefit-card">
-        <div class="benefit-icon">🆓</div>
-        <div class="benefit-title">Always Free</div>
-        <div class="benefit-desc">Core alerts are completely free. No credit card required. No hidden fees.</div>
-      </div>
-    </div>
-  `;
-}
-
-function submitAlertForm() {
-  const name = document.getElementById('alertName')?.value.trim();
-  const email = document.getElementById('alertEmail')?.value.trim();
-
-  if (!name) { alert('Please enter your name.'); return; }
-  if (!email || !email.includes('@')) { alert('Please enter a valid email address.'); return; }
-
-  // Hide form, show success
-  document.getElementById('alertFormContent').style.display = 'none';
-  document.getElementById('alertSuccess').style.display = 'block';
-
-  // In production: POST to /api/subscribe or integrate with email service
-  console.log('Alert signup:', { name, email });
-}
-
-// ============================================================
-// SHARED HTML HELPERS
-// ============================================================
-
-function loadingHTML() {
-  return `
-    <div class="loading-state">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">Fetching live odds...</div>
-    </div>`;
-}
-
-function demoBannerHTML() {
-  return `
-    <div class="demo-banner">
-      <div class="demo-banner-text">
-        <strong>Demo Mode</strong> — Using simulated data. Add your
-        <a href="https://the-odds-api.com" target="_blank" style="color:var(--blue);text-decoration:underline">The Odds API</a>
-        key as the <code style="background:var(--bg-surface);padding:1px 6px;border-radius:4px">ODDS_API_KEY</code> environment variable.
-      </div>
-      <a href="https://the-odds-api.com" target="_blank" class="demo-banner-link">Get Free API Key →</a>
-    </div>`;
-}
-
-// ============================================================
-// COUNTDOWN TIMER
-// ============================================================
-
-function startCountdown() {
-  setInterval(() => {
-    state.countdown--;
-    if (state.countdown <= 0) {
-      state.countdown = REFRESH_INTERVAL;
-      loadData();
-    }
+function startTimer() {
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
     const el = document.getElementById('updateTimer');
-    if (el) el.textContent = fmtCountdown(state.countdown);
+    if (!el || !lastFetchTime) return;
+    const elapsed = Math.floor((Date.now() - lastFetchTime) / 1000);
+    const remaining = Math.max(0, 1800 - elapsed);
+    const mins = Math.floor(remaining / 60);
+    const secs = remaining % 60;
+    el.textContent = `${mins}:${String(secs).padStart(2, '0')}`;
+    if (remaining <= 60) el.style.color = 'var(--pink)';
+    else if (remaining <= 300) el.style.color = 'var(--orange)';
+    else el.style.color = '';
   }, 1000);
 }
 
-// ============================================================
-// INIT
-// ============================================================
+function updateTicker() {
+  const ticker = document.getElementById('tickerScroll');
+  if (!ticker || !oddsData) return;
+  const events = oddsData.events || [];
+  let items = [];
+  events.forEach(event => {
+    const best = getBestOdds(event);
+    const implied = Object.values(best).reduce((s, v) => s + 1/v.price, 0);
+    const margin = ((implied - 1) * 100).toFixed(1);
+    const isArb = implied < 1;
+    const shortHome = event.home_team.split(' ').pop();
+    const shortAway = event.away_team.split(' ').pop();
+    let cls = 'ticker-flat', arrow = '—';
+    if (isArb) { cls = 'ticker-up'; arrow = '▲'; }
+    else if (parseFloat(margin) < 2) { cls = 'ticker-down'; arrow = '▼'; }
+    items.push(`<span class="ticker-item ${cls}">${shortHome} v ${shortAway} <strong>${margin}%</strong> ${arrow}</span>`);
+  });
+  ticker.innerHTML = items.join('') + items.join('');
+}
 
-document.addEventListener('DOMContentLoaded', () => {
-  loadData();
-  startCountdown();
-});
+function render() {
+  const main = document.getElementById('mainContent');
+  if (!main) return;
+  if (currentView === 'tips') { renderTipsView(main); return; }
+  if (currentView === 'alerts') { renderAlertsView(main); return; }
+  if (!oddsData) { renderLoading(); return; }
+  switch (currentView) {
+    case 'dashboard': renderDashboardView(main); break;
+    case 'arbitrage': renderArbitrageView(main); break;
+    case 'value': renderValueView(main); break;
+  }
+}
+
+function renderLoading() {
+  const main = document.getElementById('mainContent');
+  if (!main) return;
+  main.innerHTML = `
+    <div class="kpi-grid">
+      ${[1,2,3,4].map(() => `<div class="kpi-card"><div class="loading-skeleton" style="height:18px;width:55%;margin-bottom:8px"></div><div class="loading-skeleton" style="height:36px;width:40%"></div></div>`).join('')}
+    </div>
+    <div class="match-list">
+      ${[1,2,3].map(() => `<div class="match-card"><div class="match-header"><div class="loading-skeleton" style="height:18px;width:50%"></div></div><div style="padding:16px"><div class="loading-skeleton" style="height:100px"></div></div></div>`).join('')}
+    </div>
+  `;
+}
+
+function renderDashboardView(main) {
+  const events = oddsData.events || [];
+  const totalBookmakers = new Set();
+  events.forEach(e => e.bookmakers?.forEach(b => totalBookmakers.add(b.key)));
+  const arbCount = arbData?.arbitrage_count || 0;
+  let totalMargin = 0, marginCount = 0;
+  events.forEach(event => {
+    const best = getBestOdds(event);
+    if (Object.keys(best).length >= 3) {
+      const implied = Object.values(best).reduce((s, v) => s + 1/v.price, 0);
+      totalMargin += (implied - 1) * 100; marginCount++;
+    }
+  });
+  const avgMargin = marginCount > 0 ? (totalMargin / marginCount).toFixed(1) : '--';
+  let html = '';
+  if (oddsData.demo) {
+    html += `<div class="demo-banner"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Demo mode — showing simulated Premier League odds. Connect your API key for live data.</div>`;
+  }
+  html += `<div class="kpi-grid"><div class="kpi-card"><div class="kpi-label">Matches</div><div class="kpi-value">${events.length}</div><div class="kpi-delta neutral">Upcoming EPL</div></div><div class="kpi-card"><div class="kpi-label">Bookmakers</div><div class="kpi-value">${totalBookmakers.size}</div><div class="kpi-delta neutral">Worldwide</div></div><div class="kpi-card"><div class="kpi-label">Arbitrage</div><div class="kpi-value" style="color:${arbCount > 0 ? 'var(--green)' : 'inherit'}">${arbCount}</div><div class="kpi-delta ${arbCount > 0 ? 'positive' : 'neutral'}">${arbCount > 0 ? 'Live opportunities!' : 'None detected'}</div></div><div class="kpi-card"><div class="kpi-label">Avg Margin</div><div class="kpi-value">${avgMargin}%</div><div class="kpi-delta neutral">Market overround</div></div></div>`;
+  if (events.length === 0) {
+    html += `<div class="empty-state"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><h3>No upcoming matches</h3><p>Check back when EPL fixtures are scheduled.</p></div>`;
+  } else {
+    html += '<div class="match-list">';
+    events.forEach((event, idx) => { html += renderMatchCard(event, idx); });
+    html += '</div>';
+  }
+  html += renderFooter();
+  main.innerHTML = html;
+}
+
+function renderMatchCard(event, idx) {
+  const isExpanded = expandedMatches.has(idx);
+  const best = getBestOdds(event);
+  const hasArb = checkArbitrage(best);
+  let html = `<div class="match-card ${hasArb ? 'has-arbitrage' : ''}"><div class="match-header" onclick="toggleMatch(${idx})"><div class="match-teams">${event.home_team} <span class="match-vs">vs</span> ${event.away_team}</div><div class="match-meta">${hasArb ? '<span class="match-badge">ARB</span>' : ''}<span class="match-time">${formatTime(event.commence_time)}</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition:transform 180ms var(--ease-out);transform:rotate(${isExpanded ? 180 : 0}deg)"><polyline points="6 9 12 15 18 9"/></svg></div></div>`;
+  if (Object.keys(best).length >= 3) {
+    html += `<div class="odds-summary">`;
+    const outcomes = [event.home_team, 'Draw', event.away_team];
+    outcomes.forEach(name => {
+      const b = best[name];
+      if (b) {
+        const change = getOddsChange(event.id, b.bmKey, name, b.price);
+        const flashClass = change === 'up' ? 'flash-up' : change === 'down' ? 'flash-down' : change === 'new' ? 'flash-new' : '';
+        html += `<div class="summary-item"><div class="summary-label">${name === event.home_team ? 'Home' : name === 'Draw' ? 'Draw' : 'Away'}</div><div class="summary-value ${flashClass}">${b.price.toFixed(2)}</div><div class="summary-book">${b.bookmaker}</div></div>`;
+      }
+    });
+    html += `</div>`;
+  }
+  if (isExpanded) html += renderOddsTable(event, best);
+  html += '</div>';
+  return html;
+}
+
+function renderOddsTable(event, best) {
+  const bookmakers = event.bookmakers || [];
+  if (bookmakers.length === 0) return '<div style="padding:16px;color:var(--text-faint);font-size:var(--text-xs)">No bookmaker data available.</div>';
+  const outcomes = [event.home_team, 'Draw', event.away_team];
+  const worstOdds = {};
+  bookmakers.forEach(bm => { bm.markets?.forEach(m => { if (m.key !== 'h2h') return; m.outcomes?.forEach(o => { if (!(o.name in worstOdds) || o.price < worstOdds[o.name]) worstOdds[o.name] = o.price; }); }); });
+  let html = `<div class="odds-table-wrap"><table class="odds-table"><thead><tr><th>Bookmaker</th>${outcomes.map(o => `<th style="text-align:center">${o === event.home_team ? 'Home' : o === 'Draw' ? 'Draw' : 'Away'}</th>`).join('')}<th style="text-align:center">Margin</th></tr></thead><tbody>`;
+  const sorted = [...bookmakers].sort((a, b) => avgOdds(b, outcomes) - avgOdds(a, outcomes));
+  sorted.forEach(bm => {
+    const h2h = bm.markets?.find(m => m.key === 'h2h');
+    if (!h2h) return;
+    const odds = {};
+    h2h.outcomes?.forEach(o => odds[o.name] = o.price);
+    let implied = 0;
+    outcomes.forEach(o => { if (odds[o]) implied += 1/odds[o]; });
+    const margin = ((implied - 1) * 100).toFixed(1);
+    html += `<tr><td class="bookmaker-name">${bm.title}</td>`;
+    outcomes.forEach(name => {
+      const price = odds[name];
+      if (price) {
+        const isBest = best[name] && price === best[name].price;
+        const isWorst = worstOdds[name] && price === worstOdds[name] && price !== best[name]?.price;
+        const change = getOddsChange(event.id, bm.key, name, price);
+        const flashClass = change === 'up' ? 'flash-up' : change === 'down' ? 'flash-down' : change === 'new' ? 'flash-new' : '';
+        const prob = (100 / price).toFixed(1);
+        html += `<td class="odds-cell"><span class="odds-value ${isBest ? 'best' : isWorst ? 'worst' : ''} ${flashClass}">${price.toFixed(2)}</span><div class="implied-prob">${prob}%</div></td>`;
+      } else { html += `<td class="odds-cell"><span class="odds-value">—</span></td>`; }
+    });
+    html += `<td class="odds-cell"><span class="odds-value" style="font-size:11px">${margin}%</span></td></tr>`;
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function renderArbitrageView(main) {
+  let html = '';
+  if (oddsData?.demo) html += `<div class="demo-banner"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Demo mode — simulated arbitrage opportunities.</div>`;
+  const arbOpps = arbData?.opportunities?.filter(o => o.is_arbitrage) || [];
+  const nearMisses = arbData?.opportunities?.filter(o => !o.is_arbitrage && o.margin_percent < 3) || [];
+  html += `<div class="kpi-grid"><div class="kpi-card"><div class="kpi-label">Arbitrage Found</div><div class="kpi-value" style="color:var(--green)">${arbOpps.length}</div><div class="kpi-delta ${arbOpps.length > 0 ? 'positive' : 'neutral'}">${arbOpps.length > 0 ? 'Guaranteed profit!' : 'Keep scanning'}</div></div><div class="kpi-card"><div class="kpi-label">Near Misses</div><div class="kpi-value" style="color:var(--orange)">${nearMisses.length}</div><div class="kpi-delta neutral">Margin &lt; 3%</div></div><div class="kpi-card"><div class="kpi-label">Best Profit</div><div class="kpi-value" style="color:var(--green)">${arbOpps.length > 0 ? arbOpps[0].profit_percent + '%' : '--'}</div><div class="kpi-delta ${arbOpps.length > 0 ? 'positive' : 'neutral'}">Per $1,000 staked</div></div><div class="kpi-card"><div class="kpi-label">Events Scanned</div><div class="kpi-value">${arbData?.total_events || 0}</div><div class="kpi-delta neutral">EPL fixtures</div></div></div>`;
+  if (arbOpps.length > 0) { html += '<div class="arb-section">'; arbOpps.forEach(opp => { html += renderArbCard(opp); }); html += '</div>'; }
+  if (nearMisses.length > 0) { html += `<div class="section-heading">Near Misses (margin &lt; 3%)</div><div class="match-list">`; nearMisses.forEach(opp => { html += renderNearMissCard(opp); }); html += '</div>'; }
+  if (arbOpps.length === 0 && nearMisses.length === 0) html += `<div class="no-arb"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg><h3>No arbitrage detected</h3><p>True arbitrage is rare and fleeting. We scan every 30 minutes — keep watching as odds shift.</p></div>`;
+  html += renderFooter();
+  main.innerHTML = html;
+}
+
+function renderArbCard(opp) {
+  let html = `<div class="arb-card"><div class="arb-header"><div><div class="match-teams" style="font-size:var(--text-sm)">${opp.home_team} <span class="match-vs">vs</span> ${opp.away_team}</div><div class="match-time" style="margin-top:4px">${formatTime(opp.commence_time)}</div></div><div class="arb-profit">+${opp.profit_percent}%</div></div>`;
+  if (opp.suggested_stakes) {
+    html += '<div class="arb-stakes">';
+    Object.entries(opp.suggested_stakes).forEach(([name, data]) => { html += `<div class="arb-stake"><div class="arb-stake-label">${name}</div><div class="arb-stake-amount">$${data.stake.toFixed(0)}</div><div class="arb-stake-return">Return: $${data.potential_return.toFixed(0)}</div><div class="arb-stake-book">@ ${data.bookmaker}</div></div>`; });
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderNearMissCard(opp) {
+  const best = opp.best_odds || {};
+  return `<div class="match-card"><div class="match-header"><div class="match-teams">${opp.home_team} <span class="match-vs">vs</span> ${opp.away_team}</div><div class="match-meta"><span style="font-size:var(--text-xs);color:var(--orange);font-family:var(--font-mono);font-weight:700">${opp.margin_percent}%</span><span class="match-time">${formatTime(opp.commence_time)}</span></div></div><div class="odds-summary">${Object.entries(best).map(([name, data]) => `<div class="summary-item"><div class="summary-label">${name}</div><div class="summary-value">${data.price.toFixed(2)}</div><div class="summary-book">${data.bookmaker}</div></div>`).join('')}</div></div>`;
+}
+
+function renderValueView(main) {
+  let html = '';
+  if (oddsData?.demo) html += `<div class="demo-banner"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Demo mode — simulated value bets for illustration.</div>`;
+  const events = oddsData?.events || [];
+  const valueBets = [];
+  events.forEach(event => {
+    const outcomes = [event.home_team, 'Draw', event.away_team];
+    outcomes.forEach(outcomeName => {
+      const prices = [];
+      event.bookmakers?.forEach(bm => { bm.markets?.forEach(m => { if (m.key !== 'h2h') return; m.outcomes?.forEach(o => { if (o.name === outcomeName) prices.push({ price: o.price, bookmaker: bm.title }); }); }); });
+      if (prices.length < 3) return;
+      const avg = prices.reduce((s, p) => s + p.price, 0) / prices.length;
+      const bestPrice = prices.reduce((b, p) => p.price > b.price ? p : b);
+      const edge = ((bestPrice.price / avg - 1) * 100).toFixed(1);
+      if (parseFloat(edge) > 5) valueBets.push({ home: event.home_team, away: event.away_team, outcome: outcomeName, bestPrice: bestPrice.price, bestBook: bestPrice.bookmaker, avgPrice: avg, edge: parseFloat(edge), time: event.commence_time });
+    });
+  });
+  valueBets.sort((a, b) => b.edge - a.edge);
+  html += `<div class="kpi-grid"><div class="kpi-card"><div class="kpi-label">Value Bets Found</div><div class="kpi-value" style="color:var(--blue)">${valueBets.length}</div><div class="kpi-delta neutral">Edge &gt; 5%</div></div><div class="kpi-card"><div class="kpi-label">Best Edge</div><div class="kpi-value" style="color:var(--green)">${valueBets.length > 0 ? valueBets[0].edge.toFixed(1) + '%' : '--'}</div><div class="kpi-delta ${valueBets.length > 0 ? 'positive' : 'neutral'}">Above market average</div></div><div class="kpi-card"><div class="kpi-label">Markets Compared</div><div class="kpi-value">${events.length * 3}</div><div class="kpi-delta neutral">H/D/A outcomes</div></div><div class="kpi-card"><div class="kpi-label">Avg Edge</div><div class="kpi-value">${valueBets.length > 0 ? (valueBets.reduce((s,v)=>s+v.edge,0)/valueBets.length).toFixed(1) + '%' : '--'}</div><div class="kpi-delta neutral">Across value bets</div></div></div>`;
+  if (valueBets.length > 0) {
+    html += `<div class="odds-table-wrap"><table class="odds-table"><thead><tr><th>Match</th><th>Outcome</th><th style="text-align:center">Best Odds</th><th style="text-align:center">Mkt Avg</th><th style="text-align:center">Edge</th><th>Bookmaker</th></tr></thead><tbody>`;
+    valueBets.forEach(vb => { html += `<tr><td class="bookmaker-name">${vb.home} vs ${vb.away}</td><td style="font-weight:600;color:var(--text-secondary)">${vb.outcome}</td><td class="odds-cell"><span class="odds-value best">${vb.bestPrice.toFixed(2)}</span></td><td class="odds-cell"><span class="odds-value">${vb.avgPrice.toFixed(2)}</span></td><td class="odds-cell"><span class="odds-value best">+${vb.edge.toFixed(1)}%</span></td><td style="color:var(--text-muted);font-size:var(--text-xs)">${vb.bestBook}</td></tr>`; });
+    html += '</tbody></table></div>';
+  } else { html += `<div class="no-arb"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><h3>No value bets found</h3><p>Value bets appear when one bookmaker's odds significantly exceed the market average. Check back as odds shift.</p></div>`; }
+  html += renderFooter();
+  main.innerHTML = html;
+}
+
+function renderTipsView(main) {
+  let html = '';
+  html += `<div style="margin-bottom:var(--space-6);animation:slideIn var(--duration-slow) var(--ease-out) both"><p style="font-size:var(--text-sm);color:var(--text-secondary);max-width:680px;line-height:1.7">Expert-curated EPL betting strategies, analysis, and picks. All content is for educational and entertainment purposes.</p></div>`;
+  html += `<div class="section-heading" style="margin-top:0">Today's Must-Win Picks</div>`;
+  html += `<div class="tips-grid">`;
+  const picks = [
+    { match: "Arsenal vs Chelsea", pick: "Arsenal Win (Home)", confidence: "high", stars: 5, reasoning: "Arsenal's dominant home record this season (W12 D2 L1) and Chelsea's poor away form make this a strong selection. The Gunners have won 8 of their last 10 at the Emirates.", odds: "1.85" },
+    { match: "Man City vs Liverpool", pick: "Over 2.5 Goals", confidence: "high", stars: 4, reasoning: "Both teams average 2.8+ goals per game in head-to-head meetings. 9 of the last 10 meetings between these sides have seen 3+ goals. Attacking quality on both sides makes goals likely.", odds: "1.65" },
+    { match: "Newcastle vs Aston Villa", pick: "Both Teams to Score", confidence: "medium", stars: 3, reasoning: "Newcastle create plenty at home but Villa's counter-attack is lethal. BTTS has landed in 7 of Villa's last 10 away games. Expect an open, attacking contest.", odds: "1.72" },
+    { match: "Brighton vs West Ham", pick: "Brighton Win", confidence: "medium", stars: 3, reasoning: "Brighton's possession-based style has been devastating at home. West Ham's defensive frailties away from home continue to be exploited by technically proficient sides.", odds: "1.95" }
+  ];
+  picks.forEach((pick, i) => {
+    const starHtml = Array.from({length: 5}, (_, si) => `<svg class="tip-confidence-star ${si < pick.stars ? 'filled' : 'empty'}" viewBox="0 0 24 24" fill="${si < pick.stars ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`).join('');
+    html += `<div class="tip-card ${i === 0 ? 'tip-card-featured' : ''}" style="animation-delay:${i * 80}ms"><div class="tip-card-header"><div class="tip-confidence tip-confidence-${pick.confidence}">${starHtml}</div></div><div class="tip-match">${pick.match}</div><span class="tip-pick ${pick.confidence}">${pick.pick}</span><div class="tip-reasoning">${pick.reasoning}</div><div class="tip-odds-tag"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/></svg>Best odds: ${pick.odds}</div></div>`;
+  });
+  html += `</div>`;
+  html += `<div class="section-heading">Betting Strategy Guides</div><div class="tips-grid">`;
+  const strategies = [
+    { icon: 'green', iconSvg: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>', title: 'How to Read Odds', text: 'Decimal odds represent the total payout per $1 wagered. Odds of 2.50 mean a $10 bet returns $25 (including your stake). The implied probability is calculated as 1/odds — so 2.50 odds = 40% implied probability. Lower odds = higher probability. Compare across bookmakers to find the best value.' },
+    { icon: 'blue', iconSvg: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>', title: 'Bankroll Management', text: 'The #1 rule: never bet more than 1-3% of your total bankroll on a single wager. Use the Kelly Criterion to calculate optimal bet size based on edge. Set a loss limit per day/week. Track every bet in a spreadsheet. Separate your betting bankroll from personal finances. Consistency beats big swings.' },
+    { icon: 'orange', iconSvg: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>', title: 'Value Betting 101', text: "A value bet exists when a bookmaker's odds are higher than the true probability. If you estimate Arsenal has a 60% chance of winning but odds imply only 50%, that's value. Calculate edge: (your probability × odds) - 1. Positive = value. Over thousands of bets, positive expected value always wins." },
+    { icon: 'purple', iconSvg: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>', title: 'Understanding Arbitrage', text: 'Arbitrage betting exploits price differences between bookmakers. When the combined implied probability across all outcomes is below 100%, a guaranteed profit exists. Place calculated stakes on every outcome at different bookmakers. Profit is typically 1-5% per opportunity. Speed matters — arb windows close fast.' }
+  ];
+  strategies.forEach((s, i) => { html += `<div class="strategy-card" style="animation-delay:${i * 80}ms"><div class="strategy-icon ${s.icon}">${s.iconSvg}</div><div class="strategy-title">${s.title}</div><div class="strategy-text">${s.text}</div></div>`; });
+  html += `</div>`;
+  html += `<div class="disclaimer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><div><strong>Disclaimer:</strong> All tips are for educational and entertainment purposes only. Past results do not guarantee future returns. Betting involves risk — never bet more than you can afford to lose. Please bet responsibly. If you have a gambling problem, contact GambleAware at 0808 8020 133.</div></div>`;
+  html += renderFooter();
+  main.innerHTML = html;
+}
+
+function renderAlertsView(main) {
+  const isSignedUp = localStorage.getItem('oddsedge_signup') === 'true';
+  let html = '';
+  html += `<div class="alerts-hero"><span class="sparkle"></span><span class="sparkle"></span><span class="sparkle"></span><span class="sparkle"></span><span class="sparkle"></span><span class="sparkle"></span><span class="sparkle"></span><span class="sparkle"></span><div class="alerts-hero-content"><div class="alerts-hero-badge">Free for a limited time</div><h2>Get FREE Arbitrage Alerts</h2><p>We scan 50+ bookmakers every 30 minutes. When we find a guaranteed profit opportunity, you'll be the first to know.</p></div></div>`;
+  html += `<div class="tiers-grid"><div class="tier-card tier-card-free"><div class="tier-badge tier-badge-free">Free Tier</div><div class="tier-price">$0 <small>/month</small></div><div class="tier-desc">Get started with your first alert</div><ul class="tier-features"><li>First arbitrage alert free</li><li>Email or WhatsApp delivery</li><li>Basic market overview</li><li>Weekly newsletter</li></ul><button class="btn-cta btn-cta-green" onclick="document.getElementById('signupForm').scrollIntoView({behavior:'smooth'})">Get My Free Alert</button></div><div class="tier-card tier-card-pro" style="animation-delay:100ms"><div class="tier-badge tier-badge-pro">Pro Tier</div><div class="tier-price">$9.99 <small>/month</small></div><div class="tier-desc">Unlimited alerts & exclusive picks</div><ul class="tier-features"><li>Unlimited arbitrage alerts</li><li>Value bet picks daily</li><li>Exclusive tips & analysis</li><li>Priority WhatsApp group</li><li>Bankroll calculator tools</li><li>Early access to new features</li></ul><button class="btn-cta btn-cta-gold" onclick="document.getElementById('signupForm').scrollIntoView({behavior:'smooth'})">Go Pro</button></div></div>`;
+  html += `<div class="trust-badges"><div class="trust-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>SSL Secured</span></div><div class="trust-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg><span>Verified Data</span></div><div class="trust-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><span>4.8/5 Rated</span></div><div class="trust-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>24/7 Support</span></div><div class="trust-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span>Money-Back Guarantee</span></div></div>`;
+  html += `<div class="alert-form-section" id="signupForm"><h3>${isSignedUp ? "You're Signed Up!" : 'Sign Up for Alerts'}</h3><p>${isSignedUp ? "We'll send your first alert as soon as we spot an opportunity." : 'Enter your details below. Your first alert is completely free.'}</p>`;
+  if (isSignedUp) {
+    html += `<div class="form-success"><div class="form-success-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></div><h4>Registration Complete!</h4><p>You'll receive your first arbitrage alert via your preferred channel. Keep an eye on your inbox!</p></div>`;
+  } else {
+    html += `<form id="alertForm" onsubmit="handleAlertSignup(event)"><div class="form-grid"><div class="form-group"><label class="form-label">Full Name</label><input class="form-input" type="text" placeholder="John Smith" required></div><div class="form-group"><label class="form-label">Email Address</label><input class="form-input" type="email" placeholder="john@example.com" required></div><div class="form-group"><label class="form-label">WhatsApp Number</label><div class="form-row"><select class="form-select"><option value="+44">🇬🇧 +44</option><option value="+1">🇺🇸 +1</option><option value="+852">🇭🇰 +852</option><option value="+61">🇦🇺 +61</option><option value="+353">🇮🇪 +353</option><option value="+49">🇩🇪 +49</option><option value="+33">🇫🇷 +33</option><option value="+34">🇪🇸 +34</option><option value="+39">🇮🇹 +39</option><option value="+91">🇮🇳 +91</option><option value="+86">🇨🇳 +86</option><option value="+81">🇯🇵 +81</option><option value="+65">🇸🇬 +65</option><option value="+971">🇦🇪 +971</option><option value="+234">🇳🇬 +234</option><option value="+27">🇿🇦 +27</option><option value="+55">🇧🇷 +55</option></select><input class="form-input" type="tel" placeholder="7911 123456" style="flex:1"></div></div></div><div style="display:flex;gap:var(--space-3);margin-top:var(--space-4);flex-wrap:wrap"><button type="submit" class="btn-cta btn-cta-green" style="width:auto;padding:var(--space-3) var(--space-8)">Get My Free Alert</button><button type="button" class="btn-cta btn-cta-gold" style="width:auto;padding:var(--space-3) var(--space-8)" onclick="window.open('https://www.paypal.com/paypalme/OddsEdgePro','_blank')">Go Pro — $9.99/mo</button></div><div class="payment-methods"><span class="payment-label">Secure payments via</span><div class="payment-logos"><div class="pay-logo" title="PayPal"><svg width="60" height="20" viewBox="0 0 120 30"><text x="0" y="22" font-family="Inter,sans-serif" font-weight="700" font-size="18" fill="#00457C">Pay</text><text x="32" y="22" font-family="Inter,sans-serif" font-weight="700" font-size="18" fill="#0079C1">Pal</text></svg></div><div class="pay-logo" title="Visa"><svg width="50" height="20" viewBox="0 0 100 30"><text x="0" y="22" font-family="Inter,sans-serif" font-weight="800" font-size="20" fill="#e6edf3" font-style="italic">VISA</text></svg></div><div class="pay-logo" title="Mastercard"><svg width="30" height="20" viewBox="0 0 40 24"><circle cx="14" cy="12" r="10" fill="#EB001B" opacity="0.9"/><circle cx="26" cy="12" r="10" fill="#F79E1B" opacity="0.9"/></svg></div><div class="pay-logo" title="Apple Pay"><svg width="50" height="20" viewBox="0 0 100 30"><text x="0" y="22" font-family="Inter,sans-serif" font-weight="600" font-size="17" fill="#fff">Apple Pay</text></svg></div><div class="pay-logo" title="Google Pay"><svg width="50" height="20" viewBox="0 0 100 30"><text x="0" y="22" font-family="Inter,sans-serif" font-weight="600" font-size="17" fill="#4285F4">G</text><text x="14" y="22" font-family="Inter,sans-serif" font-weight="500" font-size="17" fill="#aaa"> Pay</text></svg></div><div class="pay-logo" title="Crypto"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f7931a" stroke-width="2"><circle cx="12" cy="12" r="10"/><text x="8" y="17" font-family="Inter,sans-serif" font-weight="700" font-size="13" fill="#f7931a" stroke="none">₿</text></svg></div></div></div></form>`;
+  }
+  html += `</div>`;
+  html += `<div class="section-heading">What Our Users Say</div><div class="testimonials-grid">`;
+  const testimonials = [
+    { stars: 5, text: "OddsEdge found me a 3.2% arb on the Chelsea game last weekend. Made £32 risk-free in 10 minutes. The alerts are incredibly fast.", author: "James T.", meta: "Pro member since January 2026" },
+    { stars: 5, text: "The value bet scanner is a game-changer. I've been profitable for 3 months straight following the picks. Best investment I've ever made.", author: "Sarah K.", meta: "Pro member since November 2025" },
+    { stars: 4, text: "Started with the free tier and upgraded within a week. The WhatsApp group alone is worth the price — great community and instant notifications.", author: "Marcus D.", meta: "Free → Pro in 5 days" },
+    { stars: 5, text: "I was skeptical about arbitrage but OddsEdge makes it so simple. The stake calculator does all the maths. Made back my subscription in the first alert.", author: "Li Wei", meta: "Pro member since December 2025" }
+  ];
+  testimonials.forEach((t, i) => { html += `<div class="testimonial-card" style="animation-delay:${i * 80}ms"><div class="testimonial-stars">${'★'.repeat(t.stars)}${'☆'.repeat(5-t.stars)}</div><div class="testimonial-text">"${t.text}"</div><div class="testimonial-author">${t.author}</div><div class="testimonial-meta">${t.meta}</div></div>`; });
+  html += `</div>`;
+  html += `<div class="section-heading">Contact Us</div><div class="contact-section"><a href="https://wa.me/447911123456" target="_blank" rel="noopener noreferrer" class="contact-card contact-whatsapp"><svg width="28" height="28" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg><div><div class="contact-title">WhatsApp</div><div class="contact-detail">+44 7911 123 456</div><div class="contact-sub">Quick replies, alerts & Pro group</div></div></a><a href="https://t.me/OddsEdgeAlerts" target="_blank" rel="noopener noreferrer" class="contact-card contact-telegram"><svg width="28" height="28" viewBox="0 0 24 24" fill="#0088cc"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg><div><div class="contact-title">Telegram</div><div class="contact-detail">@OddsEdgeAlerts</div><div class="contact-sub">Free channel with daily picks</div></div></a><a href="mailto:support@oddsedge.com" class="contact-card contact-email"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg><div><div class="contact-title">Email</div><div class="contact-detail">support@oddsedge.com</div><div class="contact-sub">Response within 24 hours</div></div></a></div>`;
+  html += `<div class="section-heading">Frequently Asked Questions</div><div class="faq-list">`;
+  const faqs = [
+    { q: "How does arbitrage betting work?", a: "Arbitrage betting exploits price differences between bookmakers. When different bookmakers disagree on odds enough that the total implied probability drops below 100%, you can bet on all outcomes and guarantee a profit regardless of the result. Our scanner automatically detects these opportunities across 50+ bookmakers." },
+    { q: "Is arbitrage betting legal?", a: "Yes, arbitrage betting is completely legal. You're simply placing bets at different bookmakers at their advertised prices. However, some bookmakers may limit or close accounts of players they identify as arbers. We recommend spreading bets across many bookmakers and mixing in regular bets to stay under the radar." },
+    { q: "How much can I realistically make?", a: "Typical arbitrage profits range from 1-5% per opportunity. With a bankroll of $1,000 and 2-3 opportunities per week, you could expect $20-150 in monthly profit. Scaling up your bankroll and acting quickly on alerts significantly increases returns. Value betting can yield higher returns but with more variance." },
+    { q: "How fast are the alerts?", a: "Our system scans bookmaker odds every 30 minutes and sends alerts within seconds of detecting an opportunity. Pro members get priority delivery via WhatsApp for the fastest possible notification. Speed is critical — arb windows can close within minutes." },
+    { q: "Can I cancel my Pro subscription anytime?", a: "Absolutely. There are no contracts or commitments. Cancel anytime from your account settings. You'll retain access until the end of your current billing period." }
+  ];
+  faqs.forEach((faq, i) => { html += `<div class="faq-item"><div class="faq-question" onclick="toggleFaq(this)">${faq.q}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></div><div class="faq-answer">${faq.a}</div></div>`; });
+  html += `</div>`;
+  html += renderFooter();
+  main.innerHTML = html;
+}
+
+function handleAlertSignup(e) {
+  e.preventDefault();
+  localStorage.setItem('oddsedge_signup', 'true');
+  renderAlertsView(document.getElementById('mainContent'));
+  document.getElementById('signupForm').scrollIntoView({ behavior: 'smooth' });
+}
+
+function toggleFaq(el) {
+  el.classList.toggle('open');
+  el.nextElementSibling.classList.toggle('open');
+}
+
+function renderFooter() {
+  return `<footer class="site-footer"><div class="footer-grid"><div class="footer-col"><div class="footer-brand"><svg width="28" height="28" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="10" fill="url(#fGrad)"/><path d="M14 18L18 14L26 18L18 26Z" fill="white"/><defs><linearGradient id="fGrad" x1="0" y1="0" x2="36" y2="36"><stop stop-color="#00ff87"/><stop offset="1" stop-color="#00d4ff"/></linearGradient></defs></svg><span>OddsEdge</span></div><p class="footer-desc">Professional odds comparison and arbitrage detection for Premier League bettors worldwide.</p><div class="footer-social"><a href="https://wa.me/447911123456" target="_blank" rel="noopener noreferrer" title="WhatsApp" class="social-link social-wa"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg></a><a href="https://t.me/OddsEdgeAlerts" target="_blank" rel="noopener noreferrer" title="Telegram" class="social-link social-tg"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg></a><a href="mailto:support@oddsedge.com" title="Email" class="social-link social-email"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></a></div></div><div class="footer-col"><div class="footer-heading">Product</div><a href="#" onclick="switchView('dashboard');return false">Live Odds</a><a href="#" onclick="switchView('arbitrage');return false">Arbitrage Scanner</a><a href="#" onclick="switchView('value');return false">Value Bets</a><a href="#" onclick="switchView('tips');return false">Tips & Advisory</a><a href="#" onclick="switchView('alerts');return false">Get Alerts</a></div><div class="footer-col"><div class="footer-heading">Company</div><a href="#">About Us</a><a href="#">Terms of Service</a><a href="#">Privacy Policy</a><a href="#">Responsible Gambling</a><a href="https://www.gambleaware.org" target="_blank" rel="noopener noreferrer">GambleAware</a></div><div class="footer-col"><div class="footer-heading">Support</div><a href="https://wa.me/447911123456" target="_blank" rel="noopener noreferrer">WhatsApp Support</a><a href="mailto:support@oddsedge.com">Email Support</a><a href="https://t.me/OddsEdgeAlerts" target="_blank" rel="noopener noreferrer">Telegram Channel</a><a href="#">Help Centre</a></div></div><div class="footer-payment-strip"><span>Accepted payments:</span><div class="footer-pay-logos"><span class="fpay">PayPal</span><span class="fpay" style="font-style:italic;font-weight:800;color:#e6edf3">VISA</span><span class="fpay"><svg width="24" height="14" viewBox="0 0 40 24"><circle cx="14" cy="12" r="9" fill="#EB001B" opacity="0.85"/><circle cx="26" cy="12" r="9" fill="#F79E1B" opacity="0.85"/></svg></span><span class="fpay">Apple Pay</span><span class="fpay" style="color:#f7931a">₿ Crypto</span></div></div><div class="footer-bottom"><div>© 2026 OddsEdge Ltd. All rights reserved. Registered in England & Wales.</div><div class="footer-links-row"><a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a><span>&middot;</span><a href="https://the-odds-api.com" target="_blank" rel="noopener noreferrer">Data by The Odds API</a><span>&middot;</span><span>50+ Bookmakers Worldwide</span></div></div></footer>`;
+}
+
+function getBestOdds(event) {
+  const best = {};
+  event.bookmakers?.forEach(bm => { bm.markets?.forEach(m => { if (m.key !== 'h2h') return; m.outcomes?.forEach(o => { if (!(o.name in best) || o.price > best[o.name].price) best[o.name] = { price: o.price, bookmaker: bm.title, bmKey: bm.key }; }); }); });
+  return best;
+}
+
+function checkArbitrage(best) {
+  const vals = Object.values(best);
+  if (vals.length < 3) return false;
+  return vals.reduce((s, v) => s + 1/v.price, 0) < 1.0;
+}
+
+function avgOdds(bm, outcomes) {
+  const h2h = bm.markets?.find(m => m.key === 'h2h');
+  if (!h2h) return 0;
+  let sum = 0, count = 0;
+  h2h.outcomes?.forEach(o => { sum += o.price; count++; });
+  return count > 0 ? sum / count : 0;
+}
+
+function formatTime(iso) {
+  try {
+    const d = new Date(iso), now = new Date(), diff = d - now;
+    if (diff < 0) return 'LIVE';
+    if (diff < 3600000) return `${Math.floor(diff/60000)}m`;
+    if (diff < 86400000) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch { return iso; }
+}
+
+function toggleMatch(idx) {
+  if (expandedMatches.has(idx)) expandedMatches.delete(idx);
+  else expandedMatches.add(idx);
+  render();
+}
+
+refreshData();
+startTimer();
+refreshInterval = setInterval(refreshData, 1800000);
+
+(function() {
+  const fab = document.createElement('a');
+  fab.href = 'https://wa.me/447911123456';
+  fab.target = '_blank';
+  fab.rel = 'noopener noreferrer';
+  fab.className = 'whatsapp-fab';
+  fab.title = 'Chat with us on WhatsApp';
+  fab.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg>';
+  document.body.appendChild(fab);
+})();
