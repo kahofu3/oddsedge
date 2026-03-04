@@ -3162,3 +3162,607 @@
     font-size: var(--text-xl);
   }
 }
+
+/* ================================================
+   BOOKMAKER LINK STYLES
+   ================================================ */
+
+.bookmaker-link {
+  color: inherit;
+  text-decoration: none;
+  transition: color 180ms ease;
+  cursor: pointer;
+}
+
+.bookmaker-link:hover {
+  color: var(--green);
+  text-decoration: underline;
+}
+
+.summary-cell-book .bookmaker-link,
+.summary-book .bookmaker-link {
+  color: inherit;
+}
+
+.summary-cell-book .bookmaker-link:hover,
+.summary-book .bookmaker-link:hover {
+  color: var(--green);
+}
+
+.arb-stake-book .bookmaker-link {
+  color: inherit;
+}
+
+.arb-stake-book .bookmaker-link:hover {
+  color: var(--green);
+}
+
+/* Reg badge inline link */
+.reg-badge-inline-link {
+  color: inherit;
+  text-decoration: none;
+  font-weight: 700;
+  transition: color 180ms ease;
+}
+
+.reg-badge-inline-link:hover {
+  color: var(--green);
+}
+
+/* Award card link */
+.award-card-link {
+  text-decoration: none;
+  display: block;
+}
+
+/* ================================================
+   UPCOMING MATCHES (Arbitrage View)
+   ================================================ */
+
+.upcoming-matches {
+  margin-bottom: var(--space-6);
+}
+
+.upcoming-matches-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.upcoming-match-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  transition: all var(--duration-fast);
+}
+
+.upcoming-match-row:hover {
+  border-color: var(--border-default);
+  background: var(--bg-surface);
+}
+
+.upcoming-match-teams {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.upcoming-match-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.upcoming-match-league {
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-full);
+}
+
+.upcoming-match-time {
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+/* ================================================
+   ODDS CHANGE WARNING (Arbitrage View)
+   ================================================ */
+
+.arb-odds-warning {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  background: rgba(255, 200, 0, 0.08);
+  border: 1px solid rgba(255, 200, 0, 0.25);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-6);
+  animation: slideIn var(--duration-slow) var(--ease-out) both;
+}
+
+.arb-odds-warning-icon {
+  font-size: var(--text-lg);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.arb-odds-warning-content {
+  flex: 1;
+}
+
+.arb-odds-warning-content strong {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--gold);
+  display: block;
+  margin-bottom: var(--space-1);
+}
+
+.arb-odds-warning-content p {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0 0 var(--space-3);
+}
+
+.arb-odds-warning-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.arb-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: rgba(255, 200, 0, 0.15);
+  border: 1px solid rgba(255, 200, 0, 0.3);
+  border-radius: var(--radius-full);
+  color: var(--gold);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration-base) var(--ease-out);
+}
+
+.arb-refresh-btn:hover {
+  background: rgba(255, 200, 0, 0.25);
+  border-color: rgba(255, 200, 0, 0.5);
+}
+
+/* ================================================
+   ARB STEPPER CARD
+   ================================================ */
+
+.arb-stepper-card {
+  padding: 0;
+}
+
+.arb-stepper-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-6);
+  gap: var(--space-4);
+}
+
+.arb-stepper-header-left {
+  flex: 1;
+}
+
+.arb-stepper-header-right {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.arb-guaranteed-badge {
+  display: inline-block;
+  font-size: var(--text-2xs);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  background: var(--green-dim);
+  color: var(--green);
+  margin-top: var(--space-2);
+  text-transform: uppercase;
+}
+
+/* ================================================
+   ARB INVESTMENT SUMMARY
+   ================================================ */
+
+.arb-investment-summary {
+  padding: var(--space-5) var(--space-6);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.arb-invest-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.arb-invest-item {
+  text-align: center;
+}
+
+.arb-invest-label {
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-1);
+}
+
+.arb-invest-value {
+  font-size: var(--text-lg);
+  font-weight: 800;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.arb-invest-green {
+  color: var(--green);
+}
+
+.arb-invest-note {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  text-align: center;
+  margin-bottom: var(--space-2);
+}
+
+.arb-invest-warning {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  color: var(--orange);
+}
+
+.arb-invest-warning svg {
+  stroke: var(--orange);
+  flex-shrink: 0;
+}
+
+/* ================================================
+   ARB STEPPER — Step-by-Step UI
+   ================================================ */
+
+.arb-stepper {
+  padding: var(--space-5) var(--space-6) var(--space-6);
+}
+
+.arb-step {
+  display: flex;
+  gap: var(--space-4);
+  position: relative;
+  padding-bottom: var(--space-5);
+}
+
+.arb-step:last-child {
+  padding-bottom: 0;
+}
+
+/* Indicator column (number + connector line) */
+.arb-step-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 36px;
+}
+
+.arb-step-number {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: var(--text-sm);
+  flex-shrink: 0;
+  transition: all var(--duration-base) var(--ease-out);
+}
+
+/* Connector line between steps */
+.arb-step-connector {
+  width: 2px;
+  flex: 1;
+  min-height: 16px;
+  margin-top: var(--space-2);
+  transition: background var(--duration-base);
+}
+
+/* Step states — Number colors */
+.arb-step.completed .arb-step-number {
+  background: var(--green);
+  color: #000;
+}
+
+.arb-step.active .arb-step-number {
+  background: var(--grad-green-blue);
+  color: #000;
+  box-shadow: 0 0 0 4px var(--green-dim);
+}
+
+.arb-step.pending .arb-step-number {
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  border: 2px solid var(--border-default);
+}
+
+/* Connector colors */
+.arb-step.completed .arb-step-connector {
+  background: var(--green);
+}
+
+.arb-step.active .arb-step-connector {
+  background: linear-gradient(to bottom, var(--green), var(--border-subtle));
+}
+
+.arb-step.pending .arb-step-connector {
+  background: var(--border-subtle);
+}
+
+/* Step content area */
+.arb-step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.arb-step-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+}
+
+.arb-step.completed .arb-step-title {
+  color: var(--text-muted);
+}
+
+.arb-step.pending .arb-step-title {
+  color: var(--text-muted);
+}
+
+.arb-step.completed .arb-step-content {
+  opacity: 0.65;
+}
+
+/* Step details grid */
+.arb-step-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.arb-step-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--text-xs);
+}
+
+.arb-step-detail-label {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.arb-step-detail-value {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.arb-step-odds {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--blue);
+}
+
+.arb-step-stake {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.arb-step-return {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--green);
+}
+
+/* Place Bet button (big green action) */
+.arb-step-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: var(--space-3) var(--space-5);
+  background: var(--grad-green-blue);
+  color: #000;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  border-radius: var(--radius-full);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+  transition: all var(--duration-base) var(--ease-out);
+  cursor: pointer;
+}
+
+.arb-step-action:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 20px var(--green-glow);
+  color: #000;
+}
+
+.arb-step-after-note {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+/* Done / Next Step button */
+.arb-step-done {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg-surface);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration-base) var(--ease-out);
+}
+
+.arb-step-done:hover {
+  border-color: var(--green);
+  color: var(--green);
+  background: var(--green-dim);
+}
+
+/* Completed label */
+.arb-step-completed-label {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--green);
+  padding: var(--space-2) 0;
+}
+
+/* Pending message */
+.arb-step-pending-msg {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-style: italic;
+  padding: var(--space-3) 0;
+}
+
+/* Final result box */
+.arb-step-result-box {
+  background: var(--bg-surface);
+  border: 1px solid rgba(0, 255, 135, 0.2);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.arb-step-result-header {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+}
+
+.arb-step-profit-banner {
+  background: var(--green-dim);
+  border: 1px solid rgba(0, 255, 135, 0.2);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--green);
+  margin: var(--space-3) 0;
+}
+
+.arb-step-profit-banner strong {
+  font-weight: 800;
+  font-family: var(--font-mono);
+}
+
+.arb-step-outcomes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.arb-step-outcome-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.arb-step-outcome-return {
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--green);
+}
+
+/* ================================================
+   ARB STEPPER — MOBILE
+   ================================================ */
+
+@media (max-width: 768px) {
+  .arb-stepper-header {
+    flex-direction: column;
+    padding: var(--space-4) var(--space-4);
+  }
+  .arb-stepper-header-right {
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  .arb-investment-summary {
+    padding: var(--space-4);
+  }
+  .arb-invest-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .arb-stepper {
+    padding: var(--space-4);
+  }
+  .arb-step-action {
+    font-size: var(--text-xs);
+  }
+  .upcoming-match-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+  .arb-odds-warning {
+    flex-direction: column;
+  }
+  .arb-odds-warning-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+}
