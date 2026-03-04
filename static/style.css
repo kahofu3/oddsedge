@@ -287,6 +287,10 @@
 
 .hamburger:hover { background: var(--bg-surface); }
 
+.topbar-logo {
+  flex-shrink: 0;
+}
+
 .topbar-title {
   font-size: var(--text-lg);
   font-weight: 700;
