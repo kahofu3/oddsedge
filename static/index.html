@@ -20,8 +20,40 @@
 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OddsEdge v2 — Premier League Betting Intelligence</title>
-<meta name="description" content="Live Premier League odds comparison, arbitrage detection, and value bet scanning across 50+ bookmakers worldwide.">
+<title>OddsEdge v2.2 — Football Odds Comparison & Arbitrage Scanner</title>
+<meta name="description" content="Live odds comparison and arbitrage detection across 50+ bookmakers for Premier League, La Liga, Bundesliga, Serie A and Champions League. Find guaranteed profit opportunities.">
+
+<!-- Open Graph -->
+<meta property="og:title" content="OddsEdge — Football Betting Intelligence">
+<meta property="og:description" content="Live odds comparison across 50+ bookmakers. Arbitrage scanning, value bets, and expert tips for EPL, La Liga, Bundesliga and more.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://oddsedge-gkmo.onrender.com">
+<meta property="og:image" content="https://oddsedge-gkmo.onrender.com/static/og-image.png">
+<meta property="og:site_name" content="OddsEdge">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="OddsEdge — Football Betting Intelligence">
+<meta name="twitter:description" content="Live odds from 50+ bookmakers. Arbitrage scanner for EPL, La Liga, Bundesliga, Serie A & Champions League.">
+<meta name="twitter:image" content="https://oddsedge-gkmo.onrender.com/static/og-image.png">
+
+<!-- Structured Data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "OddsEdge",
+  "description": "Football odds comparison and arbitrage detection across 50+ bookmakers",
+  "url": "https://oddsedge-gkmo.onrender.com",
+  "applicationCategory": "SportsApplication",
+  "operatingSystem": "Web",
+  "creator": {
+    "@type": "SoftwareApplication",
+    "name": "Perplexity Computer",
+    "url": "https://www.perplexity.ai/computer"
+  }
+}
+</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -104,6 +136,17 @@
       <h1 class="topbar-title" id="headerTitle">Dashboard</h1>
     </div>
     <div class="topbar-right">
+      <div class="league-selector">
+        <select id="leagueSelect" class="league-select" onchange="switchLeague(this.value)" aria-label="Select league">
+          <option value="soccer_epl">&#x26BD; Premier League</option>
+          <option value="soccer_spain_la_liga">&#x1F1EA;&#x1F1F8; La Liga</option>
+          <option value="soccer_germany_bundesliga">&#x1F1E9;&#x1F1EA; Bundesliga</option>
+          <option value="soccer_italy_serie_a">&#x1F1EE;&#x1F1F9; Serie A</option>
+          <option value="soccer_france_ligue_one">&#x1F1EB;&#x1F1F7; Ligue 1</option>
+          <option value="soccer_epl_cup">&#x1F3C6; FA Cup</option>
+          <option value="soccer_uefa_champs_league">&#x2B50; Champions League</option>
+        </select>
+      </div>
       <div class="timer-box">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         <span id="updateTimer">30:00</span>
@@ -113,6 +156,15 @@
       </button>
     </div>
   </header>
+
+  <!-- Mobile status bar (visible only on small screens) -->
+  <div class="mobile-status-bar" id="mobileStatusBar">
+    <div class="mobile-status-left">
+      <span class="live-dot"></span>
+      <span id="mobileStatusText">Loading...</span>
+    </div>
+    <div id="mobileCreditsBadge" class="mobile-credits">—</div>
+  </div>
 
   <!-- Ticker bar -->
   <div class="ticker-bar">
