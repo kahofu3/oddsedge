@@ -318,6 +318,17 @@ function renderErrorState() {
 // DASHBOARD VIEW
 // ===========================
 
+function dismissWelcomeBanner() {
+  localStorage.setItem('oddsedge_visited', 'true');
+  const banner = document.getElementById('welcomeBanner');
+  if (banner) {
+    banner.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+    banner.style.opacity = '0';
+    banner.style.transform = 'translateY(-8px)';
+    setTimeout(() => { render(); }, 300);
+  }
+}
+
 function renderDashboardView(main) {
   const events = oddsData.events || [];
   const totalBookmakers = new Set();
@@ -336,6 +347,42 @@ function renderDashboardView(main) {
   const avgMargin = marginCount > 0 ? (totalMargin / marginCount).toFixed(1) : '--';
 
   let html = '';
+
+  // Welcome banner for new visitors
+  const hasVisited = localStorage.getItem('oddsedge_visited') === 'true';
+  if (!hasVisited) {
+    html += `<div class="welcome-banner" id="welcomeBanner">
+      <button class="welcome-dismiss" onclick="dismissWelcomeBanner()" aria-label="Dismiss">×</button>
+      <div class="welcome-banner-content">
+        <h2>Welcome to OddsEdge</h2>
+        <p>Compare live odds from 59+ bookmakers. Find guaranteed profit with our arbitrage scanner. Your first alert is FREE.</p>
+        <div class="how-it-works">
+          <div class="how-step">
+            <div class="how-step-number">1</div>
+            <h4>Browse Live Odds</h4>
+            <p>Compare odds from 59+ bookmakers across 7 leagues in real-time</p>
+          </div>
+          <div class="how-step">
+            <div class="how-step-number">2</div>
+            <h4>Get Your Free Alert</h4>
+            <p>Sign up and receive your first arbitrage opportunity absolutely free</p>
+          </div>
+          <div class="how-step">
+            <div class="how-step-number">3</div>
+            <h4>Go Pro &amp; Profit</h4>
+            <p>Subscribe for $9.99/mo for unlimited alerts via WhatsApp &amp; email</p>
+          </div>
+        </div>
+        <button class="btn-cta btn-cta-green" style="width:auto;padding:var(--space-3) var(--space-8)" onclick="switchView('alerts')">Get My Free Alert &rarr;</button>
+      </div>
+    </div>`;
+  } else {
+    // Upgrade bar for returning visitors
+    html += `<div class="upgrade-bar" onclick="switchView('alerts')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <span>&#x1F514; Your first alert is FREE — Sign up now &rarr;</span>
+    </div>`;
+  }
 
   if (oddsData.demo) {
     html += `<div class="demo-banner">
@@ -597,6 +644,13 @@ function renderArbitrageView(main) {
     </div>`;
   }
 
+  // Upgrade prompt
+  html += `<div class="upgrade-prompt">
+    <h4>&#x1F4A1; You're viewing demo arbitrage data</h4>
+    <p>Sign up to get real-time alerts sent directly to your phone the moment a guaranteed profit opportunity is detected.</p>
+    <button class="btn-cta btn-cta-green" style="width:auto;padding:var(--space-3) var(--space-8)" onclick="switchView('alerts')">Get My Free Alert</button>
+  </div>`;
+
   html += renderFooter();
   main.innerHTML = html;
 }
@@ -750,6 +804,13 @@ function renderValueView(main) {
     </div>`;
   }
 
+  // Value bets upgrade prompt
+  html += `<div class="upgrade-prompt">
+    <h4>&#x1F4CA; Want daily value bet picks?</h4>
+    <p>Go Pro for $9.99/mo and get expert-curated picks delivered daily straight to your WhatsApp or email.</p>
+    <button class="btn-cta btn-cta-gold" style="width:auto;padding:var(--space-3) var(--space-8)" onclick="switchView('alerts')">Go Pro &mdash; $9.99/mo</button>
+  </div>`;
+
   html += renderFooter();
   main.innerHTML = html;
 }
@@ -871,6 +932,13 @@ function renderTipsView(main) {
 
   html += `</div>`;
 
+  // Tips upgrade prompt
+  html += `<div class="upgrade-prompt">
+    <h4>&#x1F3AF; These tips are updated with every data refresh</h4>
+    <p>Pro members get exclusive picks &amp; priority WhatsApp alerts the moment new opportunities are detected. Never miss a winning bet.</p>
+    <button class="btn-cta btn-cta-gold" style="width:auto;padding:var(--space-3) var(--space-8)" onclick="switchView('alerts')">Go Pro &mdash; $9.99/mo</button>
+  </div>`;
+
   // Disclaimer
   html += `<div class="disclaimer">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -890,26 +958,50 @@ function renderTipsView(main) {
 
 function renderAlertsView(main) {
   const isSignedUp = localStorage.getItem('oddsedge_signup') === 'true';
+  const waMsg = encodeURIComponent('Hi OddsEdge! I want to subscribe to Pro ($9.99/mo). Please send me a PayPal payment link.');
+  const waUrl = `https://wa.me/447911123456?text=${waMsg}`;
   let html = '';
 
-  // Hero section with sparkles
+  // Hero section with sparkles — updated headline
   html += `<div class="alerts-hero">
     <span class="sparkle"></span><span class="sparkle"></span><span class="sparkle"></span>
     <span class="sparkle"></span><span class="sparkle"></span><span class="sparkle"></span>
     <span class="sparkle"></span><span class="sparkle"></span>
     <div class="alerts-hero-content">
-      <div class="alerts-hero-badge">Free for a limited time</div>
-      <h2>Get FREE Arbitrage Alerts</h2>
-      <p>We scan 50+ bookmakers every 30 minutes. When we find a guaranteed profit opportunity, you'll be the first to know.</p>
+      <div class="alerts-hero-badge">No payment needed to start</div>
+      <h2>Your First Alert is FREE</h2>
+      <p>We scan 59+ bookmakers every 30 minutes. When we spot a guaranteed profit, you get notified instantly. Try it once for free &mdash; no payment needed.</p>
     </div>
   </div>`;
 
-  // Pricing tiers
+  // How It Works — 3-step process
+  html += `<div class="section-heading" style="margin-top:0">How It Works</div>
+  <div class="how-it-works" style="margin-bottom:var(--space-8)">
+    <div class="how-step">
+      <div class="how-step-number">1</div>
+      <h4>Sign Up Free</h4>
+      <p>Enter your email or WhatsApp number. Takes 10 seconds.</p>
+    </div>
+    <div class="how-step">
+      <div class="how-step-number">2</div>
+      <h4>Get Your Free Alert</h4>
+      <p>We'll send your first arbitrage opportunity with full instructions.</p>
+    </div>
+    <div class="how-step">
+      <div class="how-step-number">3</div>
+      <h4>Subscribe for More</h4>
+      <p>Love it? Go Pro for $9.99/mo. Unlimited alerts, priority delivery, VIP group.</p>
+    </div>
+  </div>`;
+
+  // Pricing tiers — improved
+  html += `<div class="limited-badge">LIMITED OFFER — First 100 subscribers get 50% off first month</div>`;
   html += `<div class="tiers-grid">
     <div class="tier-card tier-card-free">
       <div class="tier-badge tier-badge-free">Free Tier</div>
       <div class="tier-price">$0 <small>/month</small></div>
-      <div class="tier-desc">Get started with your first alert</div>
+      <div class="tier-desc">Try before you buy</div>
+      <div style="font-size:var(--text-2xs);color:var(--green);font-weight:700;margin-bottom:var(--space-3)">No credit card required</div>
       <ul class="tier-features">
         <li>First arbitrage alert free</li>
         <li>Email or WhatsApp delivery</li>
@@ -919,19 +1011,41 @@ function renderAlertsView(main) {
       <button class="btn-cta btn-cta-green" onclick="document.getElementById('signupForm').scrollIntoView({behavior:'smooth'})">Get My Free Alert</button>
     </div>
     <div class="tier-card tier-card-pro" style="animation-delay:100ms">
-      <div class="tier-badge tier-badge-pro">Pro Tier</div>
+      <div class="most-popular-badge">MOST POPULAR</div>
+      <div class="tier-badge tier-badge-pro" style="margin-top:var(--space-3)">Pro Tier</div>
       <div class="tier-price">$9.99 <small>/month</small></div>
-      <div class="tier-desc">Unlimited alerts & exclusive picks</div>
+      <div class="tier-desc">Unlimited alerts &amp; exclusive picks</div>
+      <div style="font-size:var(--text-2xs);color:var(--gold);font-weight:700;margin-bottom:var(--space-3)">Cancel anytime</div>
       <ul class="tier-features">
         <li>Unlimited arbitrage alerts</li>
         <li>Value bet picks daily</li>
-        <li>Exclusive tips & analysis</li>
+        <li>Exclusive tips &amp; analysis</li>
         <li>Priority WhatsApp group</li>
         <li>Bankroll calculator tools</li>
         <li>Early access to new features</li>
       </ul>
-      <button class="btn-cta btn-cta-gold" onclick="window.open('https://wa.me/447911123456?text=Hi%20OddsEdge!%20I%20want%20to%20subscribe%20to%20Pro%20($9.99/mo).%20Please%20send%20me%20a%20PayPal%20payment%20link.','_blank')">Go Pro</button>
+      <button class="btn-cta btn-cta-gold" onclick="showProOptions()">&#9733; Go Pro &mdash; $9.99/mo</button>
     </div>
+  </div>`;
+
+  // Pro Subscribe Box
+  html += `<div class="pro-subscribe-box" id="proSubscribeBox">
+    <h3>Ready to Go Pro?</h3>
+    <p style="font-size:var(--text-sm);color:var(--text-secondary);margin-bottom:0">Choose your preferred payment method and activate your Pro account instantly.</p>
+    <div class="payment-options">
+      <button class="payment-option payment-option-paypal" onclick="window.open('https://paypal.me/oddsedge/9.99','_blank')">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M7.144 19.532l1.049-5.751 1.22-.016c2.44 0 4.188-1.032 4.618-3.338.17-.91.17-1.684-.015-2.27-.696-2.227-2.915-2.576-5.18-2.576H4.737L2.25 19.532zm1.43-8.006l.656-3.618s.876-.013 1.504-.013c1.26 0 2.144.402 2.144 1.614 0 1.22-.889 2.017-2.244 2.017zm10.14-8.008H15.35l-1.844 10.135 1.844-.001 1.097-6.038 1.046.024c1.38 0 2.188.472 2.188 1.684 0 1.136-.783 1.98-2.063 1.98-.34 0-.656-.027-.656-.027l-.317 1.76.654.013c2.32 0 4.018-1.434 4.018-3.726 0-2.06-1.466-3.804-3.586-3.804z"/></svg>
+        <div class="payment-option-label">Pay with PayPal</div>
+        <div class="payment-option-sub">$9.99/month</div>
+      </button>
+      <button class="payment-option payment-option-whatsapp" onclick="window.open('${waUrl}','_blank')">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347zm-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        <div class="payment-option-label">Pay via WhatsApp</div>
+        <div class="payment-option-sub">Message TT to activate</div>
+      </button>
+    </div>
+    <p style="font-size:var(--text-xs);color:var(--text-secondary)">After payment, message us on WhatsApp to activate your Pro account instantly.</p>
+    <p class="pro-subscribe-trust">Secure payment &bull; Cancel anytime &bull; 7-day money-back guarantee</p>
   </div>`;
 
   // Trust badges
@@ -952,9 +1066,7 @@ function renderAlertsView(main) {
   </div>`;
 
   // Signup form
-  html += `<div class="alert-form-section" id="signupForm">
-    <h3>${isSignedUp ? 'You\'re Signed Up!' : 'Sign Up for Alerts'}</h3>
-    <p>${isSignedUp ? 'We\'ll send your first alert as soon as we spot an opportunity.' : 'Enter your details below. Your first alert is completely free.'}</p>`;
+  html += `<div class="alert-form-section" id="signupForm">`;
 
   if (isSignedUp) {
     html += `<div class="form-success">
@@ -962,9 +1074,16 @@ function renderAlertsView(main) {
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
       <h4>Registration Complete!</h4>
-      <p>You'll receive your first arbitrage alert via your preferred channel. Keep an eye on your inbox!</p>
+      <p>Your free alert is on the way! Keep an eye on your inbox or WhatsApp.</p>
+    </div>
+    <div class="post-signup-upgrade">
+      <p>Want unlimited alerts? Go Pro now &darr; and never miss another opportunity.</p>
+      <button class="btn-cta btn-cta-gold" style="width:auto;padding:var(--space-3) var(--space-8)" onclick="document.getElementById('proSubscribeBox').scrollIntoView({behavior:'smooth'})">&#9733; Go Pro &mdash; $9.99/mo</button>
     </div>`;
   } else {
+    html += `<div class="free-banner">&#x2728; Your first alert is 100% FREE &mdash; no payment required</div>`;
+    html += `<h3>Sign Up for Your Free Alert</h3>
+    <p style="font-size:var(--text-sm);color:var(--text-muted);margin-bottom:var(--space-4)">Enter your details below and we'll send your first arbitrage opportunity.</p>`;
     html += `<form id="alertForm" onsubmit="handleAlertSignup(event)">
       <div class="form-grid">
         <div class="form-group">
@@ -1169,6 +1288,16 @@ function handleAlertSignup(e) {
   localStorage.setItem('oddsedge_signup', 'true');
   renderAlertsView(document.getElementById('mainContent'));
   document.getElementById('signupForm').scrollIntoView({ behavior: 'smooth' });
+}
+
+function showProOptions() {
+  const box = document.getElementById('proSubscribeBox');
+  if (box) {
+    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    box.style.transition = 'box-shadow 0.4s ease';
+    box.style.boxShadow = '0 0 0 3px rgba(255, 215, 0, 0.4), 0 12px 40px rgba(0,0,0,0.4)';
+    setTimeout(() => { box.style.boxShadow = ''; }, 2000);
+  }
 }
 
 function toggleFaq(el) {
@@ -1401,7 +1530,11 @@ function renderBookmakerGrid() {
 // ===========================
 
 function renderFooter() {
-  return `${renderStatsBanner()}
+  return `<div class="pricing-summary-bar">
+    <strong>Free:</strong> 1 alert &nbsp;|&nbsp; <strong>Pro:</strong> Unlimited alerts, daily picks, VIP WhatsApp group &mdash; <strong>$9.99/mo</strong>
+    &nbsp;&nbsp;<button class="btn-cta btn-cta-green" style="width:auto;padding:4px 16px;font-size:var(--text-xs)" onclick="switchView('alerts')">Sign Up Free</button>
+  </div>
+  ${renderStatsBanner()}
   <div class="reg-badges-strip">
     <div class="reg-badge">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
