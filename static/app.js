@@ -995,7 +995,7 @@ function renderAlertsView(main) {
   </div>`;
 
   // Pricing tiers — improved
-  html += `<div class="limited-badge">LIMITED OFFER — First 100 subscribers get 50% off first month</div>`;
+  html += `<div class="limited-badge">LIMITED OFFER &mdash; First 100 subscribers get 50% off first month</div>`;
   html += `<div class="tiers-grid">
     <div class="tier-card tier-card-free">
       <div class="tier-badge tier-badge-free">Free Tier</div>
@@ -1024,7 +1024,7 @@ function renderAlertsView(main) {
         <li>Bankroll calculator tools</li>
         <li>Early access to new features</li>
       </ul>
-      <button class="btn-cta btn-cta-gold" onclick="showProOptions()">&#9733; Go Pro &mdash; $9.99/mo</button>
+      <button class="btn-cta btn-cta-gold" onclick="showProOptions()">★ Go Pro &mdash; $9.99/mo</button>
     </div>
   </div>`;
 
@@ -1078,7 +1078,7 @@ function renderAlertsView(main) {
     </div>
     <div class="post-signup-upgrade">
       <p>Want unlimited alerts? Go Pro now &darr; and never miss another opportunity.</p>
-      <button class="btn-cta btn-cta-gold" style="width:auto;padding:var(--space-3) var(--space-8)" onclick="document.getElementById('proSubscribeBox').scrollIntoView({behavior:'smooth'})">&#9733; Go Pro &mdash; $9.99/mo</button>
+      <button class="btn-cta btn-cta-gold" style="width:auto;padding:var(--space-3) var(--space-8)" onclick="document.getElementById('proSubscribeBox').scrollIntoView({behavior:'smooth'})">★ Go Pro &mdash; $9.99/mo</button>
     </div>`;
   } else {
     html += `<div class="free-banner">&#x2728; Your first alert is 100% FREE &mdash; no payment required</div>`;
@@ -1127,7 +1127,7 @@ function renderAlertsView(main) {
       <div class="payment-methods">
         <span class="payment-label">Secure payments via</span>
         <div class="payment-logos">
-          <div class="pay-logo" title="PayPal"><svg width="60" height="20" viewBox="0 0 120 30"><text x="0" y="22" font-family="Inter,sans-serif" font-weight="700" font-size="18" fill="#00457C">Pay</text><text x="32" y="22" font-family="Inter,sans-serif" font-weight="700" font-size="18" fill="#0079C1">Pal</text></svg></div>
+          <div class="pay-logo" title="PayPal"><svg width="60" height="20" viewBox="0 0 120 30"><text x="0" y="22" font-family="Inter,sans-serif" font-weight="700" font-size="18" fill="#0070BA">Pay</text><text x="32" y="22" font-family="Inter,sans-serif" font-weight="700" font-size="18" fill="#00A1E4">Pal</text></svg></div>
           <div class="pay-logo" title="Visa"><svg width="50" height="20" viewBox="0 0 100 30"><text x="0" y="22" font-family="Inter,sans-serif" font-weight="800" font-size="20" fill="#e6edf3" font-style="italic">VISA</text></svg></div>
           <div class="pay-logo" title="Mastercard"><svg width="30" height="20" viewBox="0 0 40 24"><circle cx="14" cy="12" r="10" fill="#EB001B" opacity="0.9"/><circle cx="26" cy="12" r="10" fill="#F79E1B" opacity="0.9"/></svg></div>
           <div class="pay-logo" title="Apple Pay"><svg width="50" height="20" viewBox="0 0 100 30"><text x="0" y="22" font-family="Inter,sans-serif" font-weight="600" font-size="17" fill="#fff">Apple Pay</text></svg></div>
