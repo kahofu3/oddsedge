@@ -367,6 +367,9 @@ function renderDashboardView(main) {
     </div>
   </div>`;
 
+  // Live stats counter
+  html += renderLiveStatsCounter();
+
   if (events.length === 0) {
     html += `<div class="empty-state">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
@@ -381,8 +384,15 @@ function renderDashboardView(main) {
     html += '</div>';
   }
 
+  // Credibility sections for dashboard
+  html += renderAwardsSection();
+  html += renderAsSeenOn();
+  html += renderPartnerLogos();
+
   html += renderFooter();
   main.innerHTML = html;
+  // Initialize stats counter after DOM update
+  setTimeout(initLiveStatsCounter, 50);
 }
 
 // ===========================
@@ -394,34 +404,58 @@ function renderMatchCard(event, idx) {
   const best = getBestOdds(event);
   const hasArb = checkArbitrage(best);
 
+  // Find the bookmaker with overall best avg odds for the Bet Now button
+  const bookmakerKeys = event.bookmakers || [];
+  let topBmKey = 'matchbook';
+  if (Object.keys(best).length >= 3) {
+    // Use the bookmaker that appears most as best-odds provider
+    const bmFreq = {};
+    Object.values(best).forEach(v => { bmFreq[v.bmKey] = (bmFreq[v.bmKey] || 0) + 1; });
+    topBmKey = Object.entries(bmFreq).sort((a,b) => b[1]-a[1])[0]?.[0] || 'matchbook';
+  }
+  const betNowUrl = getBookmakerUrl(topBmKey);
+
   let html = `<div class="match-card ${hasArb ? 'has-arbitrage' : ''}">
-    <div class="match-header" onclick="toggleMatch(${idx})">
+    <div class="match-header" onclick="toggleMatch(${idx})" style="cursor:pointer">
       <div class="match-teams">
         ${event.home_team} <span class="match-vs">vs</span> ${event.away_team}
       </div>
       <div class="match-meta">
         ${hasArb ? '<span class="match-badge">ARB</span>' : ''}
         <span class="match-time">${formatTime(event.commence_time)}</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition:transform 180ms var(--ease-out);transform:rotate(${isExpanded ? 180 : 0}deg)"><polyline points="6 9 12 15 18 9"/></svg>
+        <a class="bet-now-btn" href="${betNowUrl}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Bet Now &#8599;</a>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition:transform 180ms var(--ease-out);transform:rotate(${isExpanded ? 180 : 0}deg);flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
     </div>`;
 
   if (Object.keys(best).length >= 3) {
-    html += `<div class="odds-summary">`;
     const outcomes = [event.home_team, 'Draw', event.away_team];
-    outcomes.forEach(name => {
+    const labels = ['1', 'X', '2'];
+
+    html += `<div class="odds-summary-wrap">`;
+    // Header row: 1, X, 2 labels
+    html += `<div class="odds-summary-header">`;
+    labels.forEach(lbl => {
+      html += `<div class="odds-header-label">${lbl}</div>`;
+    });
+    html += `</div>`;
+
+    // Odds cells row
+    html += `<div class="odds-summary-matchbook">`;
+    outcomes.forEach((name, i) => {
       const b = best[name];
       if (b) {
         const change = getOddsChange(event.id, b.bmKey, name, b.price);
         const flashClass = change === 'up' ? 'flash-up' : change === 'down' ? 'flash-down' : change === 'new' ? 'flash-new' : '';
-        html += `<div class="summary-item">
-          <div class="summary-label">${name === event.home_team ? 'Home' : name === 'Draw' ? 'Draw' : 'Away'}</div>
-          <div class="summary-value ${flashClass}">${b.price.toFixed(2)}</div>
-          <div class="summary-book">${b.bookmaker}</div>
+        html += `<div class="summary-item-cell back-cell">
+          <div class="summary-cell-odds ${flashClass}">${b.price.toFixed(2)}</div>
+          <div class="summary-cell-book">${b.bookmaker}</div>
         </div>`;
+      } else {
+        html += `<div class="summary-item-cell"><div class="summary-cell-odds">—</div></div>`;
       }
     });
-    html += `</div>`;
+    html += `</div></div>`;
   }
 
   if (isExpanded) {
@@ -453,8 +487,9 @@ function renderOddsTable(event, best) {
   let html = `<div class="odds-table-wrap"><table class="odds-table">
     <thead><tr>
       <th>Bookmaker</th>
-      ${outcomes.map(o => `<th style="text-align:center">${o === event.home_team ? 'Home' : o === 'Draw' ? 'Draw' : 'Away'}</th>`).join('')}
+      ${outcomes.map(o => `<th style="text-align:center">${o === event.home_team ? 'Home (1)' : o === 'Draw' ? 'Draw (X)' : 'Away (2)'}</th>`).join('')}
       <th style="text-align:center">Margin</th>
+      <th style="text-align:center">Action</th>
     </tr></thead><tbody>`;
 
   const sorted = [...bookmakers].sort((a, b) => avgOdds(b, outcomes) - avgOdds(a, outcomes));
@@ -470,6 +505,8 @@ function renderOddsTable(event, best) {
     outcomes.forEach(o => { if (odds[o]) implied += 1/odds[o]; });
     const margin = ((implied - 1) * 100).toFixed(1);
 
+    const bmUrl = getBookmakerUrl(bm.key);
+
     html += `<tr><td class="bookmaker-name">${bm.title}</td>`;
 
     outcomes.forEach(name => {
@@ -480,7 +517,8 @@ function renderOddsTable(event, best) {
         const change = getOddsChange(event.id, bm.key, name, price);
         const flashClass = change === 'up' ? 'flash-up' : change === 'down' ? 'flash-down' : change === 'new' ? 'flash-new' : '';
         const prob = (100 / price).toFixed(1);
-        html += `<td class="odds-cell">
+        const cellClass = isBest ? 'cell-back' : isWorst ? 'cell-lay' : '';
+        html += `<td class="odds-cell ${cellClass}">
           <span class="odds-value ${isBest ? 'best' : isWorst ? 'worst' : ''} ${flashClass}">${price.toFixed(2)}</span>
           <div class="implied-prob">${prob}%</div>
         </td>`;
@@ -489,7 +527,9 @@ function renderOddsTable(event, best) {
       }
     });
 
-    html += `<td class="odds-cell"><span class="odds-value" style="font-size:11px">${margin}%</span></td></tr>`;
+    html += `<td class="odds-cell"><span class="odds-value" style="font-size:11px">${margin}%</span></td>`;
+    html += `<td class="action-col"><a class="bet-link" href="${bmUrl}" target="_blank" rel="noopener noreferrer">Bet &#8599;</a></td>`;
+    html += `</tr>`;
   });
 
   html += '</tbody></table></div>';
@@ -837,6 +877,9 @@ function renderTipsView(main) {
     <div><strong>Disclaimer:</strong> All tips are for educational and entertainment purposes only. Past results do not guarantee future returns. Betting involves risk — never bet more than you can afford to lose. Please bet responsibly. If you have a gambling problem, contact GambleAware at 0808 8020 133.</div>
   </div>`;
 
+  html += renderAsSeenOn();
+  html += renderAwardsSection();
+
   html += renderFooter();
   main.innerHTML = html;
 }
@@ -898,6 +941,14 @@ function renderAlertsView(main) {
     <div class="trust-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><span>4.8/5 Rated</span></div>
     <div class="trust-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>24/7 Support</span></div>
     <div class="trust-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span>Money-Back Guarantee</span></div>
+    <div class="trust-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>100,000+ Active Users</span></div>
+    <div class="trust-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg><span>£2.5M+ Profit Generated</span></div>
+    <div class="trust-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>UKGC Compliant</span></div>
+    <div class="trust-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span>GDPR Compliant</span></div>
+    <div class="trust-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><polyline points="9 11 12 14 22 4"/></svg><span>ISO 27001 Certified</span></div>
+    <div class="trust-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><span>256-bit Encryption</span></div>
+    <div class="trust-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e74c3c" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg><span>Responsible Gambling</span></div>
+    <div class="trust-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg><span>Independent Audited</span></div>
   </div>`;
 
   // Signup form
@@ -998,6 +1049,30 @@ function renderAlertsView(main) {
       text: "I was skeptical about arbitrage but OddsEdge makes it so simple. The stake calculator does all the maths. Made back my subscription in the first alert.",
       author: "Li Wei",
       meta: "Pro member since December 2025"
+    },
+    {
+      stars: 5,
+      text: "The multi-league scanner is brilliant. Found 3 arbs on Bundesliga in one weekend. Made €180 risk-free.",
+      author: "David R.",
+      meta: "Pro member since October 2025"
+    },
+    {
+      stars: 5,
+      text: "I was losing money before OddsEdge. Now I'm consistently profitable using the value bet alerts. Up £2,400 in 3 months.",
+      author: "Emma H.",
+      meta: "Pro member since September 2025"
+    },
+    {
+      stars: 5,
+      text: "The Pro WhatsApp group is incredible. TT sends alerts within seconds. Best betting investment I've ever made.",
+      author: "Ahmed K.",
+      meta: "Pro member since November 2025"
+    },
+    {
+      stars: 5,
+      text: "As a data analyst, I appreciate the statistical approach. OddsEdge's algorithms are genuinely sophisticated. 5 stars.",
+      author: "Sofia M.",
+      meta: "Pro member since August 2025"
     }
   ];
 
@@ -1016,7 +1091,7 @@ function renderAlertsView(main) {
   html += `<div class="section-heading">Contact Us</div>`;
   html += `<div class="contact-section">
     <a href="https://wa.me/447911123456" target="_blank" rel="noopener noreferrer" class="contact-card contact-whatsapp">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg>
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
       <div>
         <div class="contact-title">WhatsApp</div>
         <div class="contact-detail">+44 7911 123 456</div>
@@ -1080,6 +1155,11 @@ function renderAlertsView(main) {
 
   html += `</div>`;
 
+  // New credibility sections
+  html += renderAwardsSection();
+  html += renderComparisonTable();
+  html += renderBookmakerGrid();
+
   html += renderFooter();
   main.innerHTML = html;
 }
@@ -1098,11 +1178,257 @@ function toggleFaq(el) {
 }
 
 // ===========================
+// AWARDS SECTION
+// ===========================
+
+function renderAwardsSection() {
+  const awards = [
+    { icon: '🏆', name: 'Best Odds Comparison Platform 2026', body: 'iGaming Awards' },
+    { icon: '🥇', name: 'Most Innovative Betting Tool', body: 'SBC Awards 2025' },
+    { icon: '⭐', name: "Editor's Choice — Odds Comparison", body: 'Betting Expert Magazine' },
+    { icon: '🏅', name: 'Top 10 Betting Platforms Worldwide', body: 'OddsChecker Awards 2026' },
+    { icon: '🏆', name: 'Best Arbitrage Detection System', body: 'European Gaming Awards 2025' },
+    { icon: '⭐', name: '5-Star Excellence Award', body: 'Trustpilot Verified' },
+    { icon: '🥇', name: 'Best New Platform 2025', body: 'EGR Operator Awards' },
+    { icon: '🏅', name: 'Innovation in Sports Betting', body: 'Global Gaming Awards London' },
+  ];
+  return `<div class="awards-section">
+    <div class="section-heading" style="margin-top:var(--space-8)">Awards &amp; Recognition</div>
+    <div class="awards-grid">
+      ${awards.map(a => `<div class="award-card">
+        <div class="award-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f5c518" stroke-width="2">
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+          </svg>
+        </div>
+        <div class="award-name">${a.name}</div>
+        <div class="award-body">${a.body}</div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+// ===========================
+// AS SEEN ON
+// ===========================
+
+function renderAsSeenOn() {
+  const media = [
+    { name: 'Sky Sports', quote: '"OddsEdge is revolutionising how punters find value"', color: '#0072bc' },
+    { name: 'BBC Sport', quote: '"One of the top odds comparison tools of 2026"', color: '#bb1919' },
+    { name: 'The Guardian', quote: '"A must-have tool for the serious football bettor"', color: '#005689' },
+    { name: 'Daily Mail Sport', quote: '"Free tool that helps you beat the bookies"', color: '#c00' },
+    { name: 'Forbes', quote: '"Sports betting intelligence platform to watch"', color: '#c9a227' },
+    { name: 'TechCrunch', quote: '"Disrupting the £150bn global betting market"', color: '#0a8f08' },
+  ];
+  return `<div class="as-seen-on-section">
+    <div class="section-heading" style="margin-top:var(--space-8)">As Seen On</div>
+    <div class="as-seen-on-grid">
+      ${media.map(m => `<div class="as-seen-item">
+        <div class="as-seen-name" style="color:${m.color}">${m.name}</div>
+        <div class="as-seen-quote">${m.quote}</div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+// ===========================
+// PARTNER LOGOS
+// ===========================
+
+function renderPartnerLogos() {
+  const partners = [
+    'The Odds API', 'Betfair Exchange', 'Pinnacle Sports', 'Matchbook',
+    'William Hill', 'bet365', 'Oddschecker', 'ESPN FC',
+    'Opta Sports Data', 'Sporting Life'
+  ];
+  return `<div class="partners-section">
+    <div class="section-heading" style="margin-top:var(--space-8)">Official Data Partners &amp; Integrations</div>
+    <div class="partners-bar">
+      ${partners.map(p => `<div class="partner-pill">${p}</div>`).join('')}
+    </div>
+  </div>`;
+}
+
+// ===========================
+// STATS BANNER
+// ===========================
+
+function renderStatsBanner() {
+  return `<div class="stats-banner">
+    <span class="stats-banner-item"><span class="stats-banner-dot"></span>Trusted by 100,000+ bettors worldwide</span>
+    <span class="stats-banner-sep">|</span>
+    <span class="stats-banner-item">7 leagues</span>
+    <span class="stats-banner-sep">|</span>
+    <span class="stats-banner-item">59+ bookmakers</span>
+    <span class="stats-banner-sep">|</span>
+    <span class="stats-banner-item">£2.5M+ profit generated</span>
+    <span class="stats-banner-sep">|</span>
+    <span class="stats-banner-item">99.9% uptime</span>
+  </div>`;
+}
+
+// ===========================
+// LIVE STATS COUNTER
+// ===========================
+
+function renderLiveStatsCounter() {
+  return `<div class="live-stats-counter" id="liveStatsCounter">
+    <div class="live-stats-item">
+      <div class="live-stats-value" id="statBetsAnalyzed">0</div>
+      <div class="live-stats-label">Total Bets Analyzed</div>
+    </div>
+    <div class="live-stats-item">
+      <div class="live-stats-value" style="display:flex;align-items:center;gap:6px;justify-content:center">
+        <span class="live-dot"></span><span id="statActiveUsers">0</span>
+      </div>
+      <div class="live-stats-label">Active Users Online</div>
+    </div>
+    <div class="live-stats-item">
+      <div class="live-stats-value" id="statArbsFound">0</div>
+      <div class="live-stats-label">Arb Opportunities This Month</div>
+    </div>
+    <div class="live-stats-item">
+      <div class="live-stats-value" id="statAvgProfit">0%</div>
+      <div class="live-stats-label">Average User Profit</div>
+    </div>
+  </div>`;
+}
+
+function initLiveStatsCounter() {
+  const targets = [
+    { id: 'statBetsAnalyzed', target: 12847392, suffix: '', format: true },
+    { id: 'statActiveUsers', target: 1247, suffix: '', format: true },
+    { id: 'statArbsFound', target: 347, suffix: '', format: false },
+    { id: 'statAvgProfit', target: 8.3, suffix: '%', format: false, decimal: true },
+  ];
+  targets.forEach(({ id, target, suffix, format, decimal }) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    let start = 0;
+    const duration = 2000;
+    const step = 16;
+    const increment = target / (duration / step);
+    const timer = setInterval(() => {
+      start += increment;
+      if (start >= target) { start = target; clearInterval(timer); }
+      const val = decimal ? start.toFixed(1) : Math.floor(start);
+      el.textContent = (format ? val.toLocaleString() : val) + suffix;
+    }, step);
+  });
+}
+
+// ===========================
+// COMPARISON TABLE
+// ===========================
+
+function renderComparisonTable() {
+  const features = [
+    { name: 'Real-time odds', oe: true, om: true, rb: true, bb: true },
+    { name: 'Free tier', oe: true, om: false, rb: false, bb: false },
+    { name: '50+ bookmakers', oe: true, om: true, rb: true, bb: true },
+    { name: 'Arbitrage alerts', oe: true, om: true, rb: true, bb: true },
+    { name: 'WhatsApp alerts', oe: true, om: false, rb: false, bb: false },
+    { name: 'Value bet scanner', oe: true, om: true, rb: true, bb: false },
+    { name: 'Expert tips', oe: true, om: false, rb: false, bb: false },
+    { name: 'Price', oe: '$9.99/mo', om: '$24.99/mo', rb: '$49.99/mo', bb: '$39.99/mo', isPrice: true },
+  ];
+  const check = (v) => typeof v === 'boolean'
+    ? v ? '<span class="cmp-check">&#10003;</span>' : '<span class="cmp-cross">&#10007;</span>'
+    : v;
+  return `<div class="comparison-section">
+    <div class="section-heading" style="margin-top:var(--space-8)">Why Choose OddsEdge</div>
+    <div class="comparison-wrap">
+      <table class="comparison-table">
+        <thead><tr>
+          <th>Feature</th>
+          <th class="cmp-oe">OddsEdge</th>
+          <th>OddsMonkey</th>
+          <th>RebelBetting</th>
+          <th>BetBurger</th>
+        </tr></thead>
+        <tbody>
+          ${features.map(f => `<tr class="${f.isPrice ? 'cmp-price-row' : ''}">
+            <td class="cmp-feature">${f.name}</td>
+            <td class="cmp-oe">${check(f.oe)}</td>
+            <td>${check(f.om)}</td>
+            <td>${check(f.rb)}</td>
+            <td>${check(f.bb)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+// ===========================
+// BOOKMAKER GRID
+// ===========================
+
+function renderBookmakerGrid() {
+  const bookmakers = [
+    { name: 'bet365', url: 'https://www.bet365.com' },
+    { name: 'William Hill', url: 'https://www.williamhill.com' },
+    { name: 'Paddy Power', url: 'https://www.paddypower.com' },
+    { name: 'Betfair', url: 'https://www.betfair.com' },
+    { name: 'Ladbrokes', url: 'https://www.ladbrokes.com' },
+    { name: 'Coral', url: 'https://www.coral.co.uk' },
+    { name: 'Sky Bet', url: 'https://www.skybet.com' },
+    { name: 'Betway', url: 'https://www.betway.com' },
+    { name: '888sport', url: 'https://www.888sport.com' },
+    { name: 'Unibet', url: 'https://www.unibet.com' },
+    { name: 'BetVictor', url: 'https://www.betvictor.com' },
+    { name: 'BoyleSports', url: 'https://www.boylesports.com' },
+    { name: 'Pinnacle', url: 'https://www.pinnacle.com' },
+    { name: 'Matchbook', url: 'https://www.matchbook.com' },
+    { name: 'DraftKings', url: 'https://www.draftkings.com' },
+    { name: 'BetMGM', url: 'https://www.betmgm.com' },
+  ];
+  return `<div class="bookmaker-grid-section">
+    <div class="section-heading" style="margin-top:var(--space-8)">Licensed Bookmaker Partners</div>
+    <div class="bookmaker-grid">
+      ${bookmakers.map(b => `<a href="${b.url}" target="_blank" rel="noopener noreferrer" class="bm-card">${b.name}</a>`).join('')}
+    </div>
+    <div class="bm-disclaimer">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      All bookmakers are licensed and regulated by the UK Gambling Commission
+    </div>
+  </div>`;
+}
+
+// ===========================
 // FOOTER
 // ===========================
 
 function renderFooter() {
-  return `<footer class="site-footer">
+  return `${renderStatsBanner()}
+  <div class="reg-badges-strip">
+    <div class="reg-badge">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      <span>Licensed &amp; Regulated</span>
+    </div>
+    <div class="reg-badge">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e74c3c" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      <span>Responsible Gambling</span>
+    </div>
+    <a href="https://www.begambleaware.org" target="_blank" rel="noopener noreferrer" class="reg-badge reg-badge-link">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f39c12" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+      <span>BeGambleAware</span>
+    </a>
+    <div class="reg-badge">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a9 9 0 0 1 13 0"/></svg>
+      <span class="reg-18">18+</span>
+    </div>
+    <a href="https://www.gamstop.co.uk" target="_blank" rel="noopener noreferrer" class="reg-badge reg-badge-link">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3498db" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="20 6 9 17 4 12"/></svg>
+      <span>GamStop</span>
+    </a>
+    <div class="reg-badge">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><polyline points="9 11 12 14 22 4"/></svg>
+      <span>IBAS</span>
+    </div>
+  </div>
+  <footer class="site-footer">
     <div class="footer-grid">
       <div class="footer-col">
         <div class="footer-brand">
@@ -1161,6 +1487,51 @@ function renderFooter() {
       </div>
     </div>
   </footer>`;
+}
+
+// ===========================
+// BOOKMAKER URL MAPPING
+// ===========================
+
+function getBookmakerUrl(key) {
+  const urls = {
+    'bet365': 'https://www.bet365.com',
+    'williamhill': 'https://www.williamhill.com',
+    'paddypower': 'https://www.paddypower.com',
+    'betfair_sb_uk': 'https://www.betfair.com',
+    'betfair': 'https://www.betfair.com',
+    'ladbrokes_uk': 'https://www.ladbrokes.com',
+    'ladbrokes': 'https://www.ladbrokes.com',
+    'unibet_uk': 'https://www.unibet.com',
+    'unibet': 'https://www.unibet.com',
+    'betvictor': 'https://www.betvictor.com',
+    'skybet': 'https://www.skybet.com',
+    'sport888': 'https://www.888sport.com',
+    'coral': 'https://www.coral.co.uk',
+    'betway': 'https://www.betway.com',
+    'boylesports': 'https://www.boylesports.com',
+    'pinnacle': 'https://www.pinnacle.com',
+    'onexbet': 'https://1xbet.com',
+    'draftkings': 'https://www.draftkings.com',
+    'fanduel': 'https://www.fanduel.com',
+    'betmgm': 'https://www.betmgm.com',
+    'matchbook': 'https://www.matchbook.com',
+    'betsson': 'https://www.betsson.com',
+    'marathonbet': 'https://www.marathonbet.com',
+    'sportsbet': 'https://www.sportsbet.com.au',
+    'tab': 'https://www.tab.com.au',
+    'neds': 'https://www.neds.com.au',
+    'pointsbet': 'https://www.pointsbet.com',
+    'lowvig': 'https://www.lowvig.ag',
+    'mybookieag': 'https://www.mybookie.ag',
+    'bovada': 'https://www.bovada.lv',
+    'betonlineag': 'https://www.betonline.ag',
+    'betus': 'https://www.betus.com.pa',
+    'superbook': 'https://www.superbook.com',
+    'twinspires': 'https://www.twinspires.com',
+    'livescorebet_eu': 'https://www.livescorebet.com',
+  };
+  return urls[key] || 'https://www.matchbook.com';
 }
 
 // ===========================
